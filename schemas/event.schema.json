@@ -1,0 +1,253 @@
+{
+  "$defs": {
+    "Driver": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "team": {
+          "title": "Team",
+          "type": "string"
+        },
+        "color": {
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "title": "Color",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "name",
+        "team",
+        "color"
+      ],
+      "title": "Driver",
+      "type": "object"
+    },
+    "Session": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "FP1",
+            "FP2",
+            "FP3",
+            "Q",
+            "SQ",
+            "SS",
+            "S",
+            "R"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "start": {
+          "format": "date-time",
+          "title": "Start",
+          "type": "string"
+        },
+        "end": {
+          "format": "date-time",
+          "title": "End",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "start",
+        "end"
+      ],
+      "title": "Session",
+      "type": "object"
+    },
+    "TargetState": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "enum": [
+            "qualifying",
+            "race"
+          ],
+          "title": "Target",
+          "type": "string"
+        },
+        "session_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "cutoff_at": {
+          "format": "date-time",
+          "title": "Cutoff At",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "scheduled",
+            "unavailable",
+            "issued",
+            "reconstructed"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "forecast_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Forecast Id"
+        },
+        "entrant_ids": {
+          "items": {
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+            "type": "string"
+          },
+          "title": "Entrant Ids",
+          "type": "array"
+        },
+        "roster_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Roster Source"
+        },
+        "roster_observed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Roster Observed At"
+        }
+      },
+      "required": [
+        "target",
+        "session_id",
+        "cutoff_at",
+        "state"
+      ],
+      "title": "TargetState",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "season": {
+      "maximum": 2100,
+      "minimum": 2018,
+      "title": "Season",
+      "type": "integer"
+    },
+    "round": {
+      "maximum": 40,
+      "minimum": 1,
+      "title": "Round",
+      "type": "integer"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "circuit": {
+      "title": "Circuit",
+      "type": "string"
+    },
+    "country": {
+      "title": "Country",
+      "type": "string"
+    },
+    "timezone": {
+      "title": "Timezone",
+      "type": "string"
+    },
+    "sessions": {
+      "items": {
+        "$ref": "#/$defs/Session"
+      },
+      "title": "Sessions",
+      "type": "array"
+    },
+    "entrants": {
+      "items": {
+        "$ref": "#/$defs/Driver"
+      },
+      "title": "Entrants",
+      "type": "array"
+    },
+    "targets": {
+      "items": {
+        "$ref": "#/$defs/TargetState"
+      },
+      "title": "Targets",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "season",
+    "round",
+    "name",
+    "circuit",
+    "country",
+    "timezone",
+    "sessions",
+    "entrants",
+    "targets"
+  ],
+  "title": "Event",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

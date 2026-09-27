@@ -1,0 +1,77 @@
+name: Verify
+on:
+  push:
+  pull_request:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: false
+        default: ""
+permissions:
+  contents: read
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.19"
+          enable-cache: true
+          python-version: "3.13"
+      - run: uv sync --locked --all-groups
+      - run: uv run ruff check pipeline
+      - run: uv run pyright
+      - run: uv run pytest -q
+      - run: uv run f1forecast schema
+      - run: git diff --exit-code -- schemas
+      - run: uv run f1forecast validate --all-history
+      - name: Check previously issued artifacts
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha }}
+        run: uv run f1forecast validate --base-ref "$BASE_REF"
+      - name: Check direct-push immutability
+        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        env:
+          BASE_REF: ${{ github.event.before }}
+        run: uv run f1forecast validate --base-ref "$BASE_REF"
+  web:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_BASE_PATH: /f1-preview
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "9.15.9"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm --dir web install --frozen-lockfile
+      - run: pnpm --dir web lint
+      - run: pnpm --dir web test:unit
+      - run: pnpm --dir web build
+        env:
+          NEXT_PUBLIC_BASE_PATH: /f1-preview
+      - run: pnpm --dir web typecheck
+      - run: pnpm --dir web verify:export
+        env:
+          NEXT_PUBLIC_BASE_PATH: /f1-preview
+      - run: pnpm --dir web exec playwright install --with-deps chromium
+      - run: pnpm --dir web test:e2e --workers=1
+      - run: pnpm --dir web test:lifecycles
+      - run: pnpm --dir web perf:budget
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failure-evidence
+          path: web/test-results/

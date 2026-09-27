@@ -1,0 +1,1022 @@
+{
+  "$defs": {
+    "ActualResult": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "enum": [
+            "qualifying",
+            "race"
+          ],
+          "title": "Target",
+          "type": "string"
+        },
+        "driver_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Driver Id",
+          "type": "string"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target",
+        "driver_id",
+        "status"
+      ],
+      "title": "ActualResult",
+      "type": "object"
+    },
+    "Analysis": {
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "demonstration",
+            "observed"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "circuit_points": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Circuit Points",
+          "type": "array"
+        },
+        "drivers": {
+          "items": {
+            "$ref": "#/$defs/DriverAnalysis"
+          },
+          "title": "Drivers",
+          "type": "array"
+        },
+        "actuals": {
+          "items": {
+            "$ref": "#/$defs/ActualResult"
+          },
+          "title": "Actuals",
+          "type": "array"
+        }
+      },
+      "required": [
+        "event_id",
+        "kind",
+        "source",
+        "circuit_points",
+        "drivers",
+        "actuals"
+      ],
+      "title": "Analysis",
+      "type": "object"
+    },
+    "CalibrationBin": {
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "enum": [
+            "win",
+            "podium",
+            "top10"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "predicted": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Predicted",
+          "type": "number"
+        },
+        "observed": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Observed",
+          "type": "number"
+        },
+        "count": {
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "outcome",
+        "predicted",
+        "observed",
+        "count"
+      ],
+      "title": "CalibrationBin",
+      "type": "object"
+    },
+    "ConfidenceInterval": {
+      "additionalProperties": false,
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "low": {
+          "title": "Low",
+          "type": "number"
+        },
+        "high": {
+          "title": "High",
+          "type": "number"
+        }
+      },
+      "required": [
+        "metric",
+        "low",
+        "high"
+      ],
+      "title": "ConfidenceInterval",
+      "type": "object"
+    },
+    "Coverage": {
+      "additionalProperties": false,
+      "properties": {
+        "available_sessions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Available Sessions",
+          "type": "array"
+        },
+        "missing_sessions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Sessions",
+          "type": "array"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Flags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "available_sessions",
+        "missing_sessions",
+        "summary",
+        "flags"
+      ],
+      "title": "Coverage",
+      "type": "object"
+    },
+    "Driver": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "team": {
+          "title": "Team",
+          "type": "string"
+        },
+        "color": {
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "title": "Color",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "name",
+        "team",
+        "color"
+      ],
+      "title": "Driver",
+      "type": "object"
+    },
+    "DriverAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "driver_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Driver Id",
+          "type": "string"
+        },
+        "practice_pace_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Practice Pace S"
+        },
+        "long_run_pace_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Long Run Pace S"
+        },
+        "stints": {
+          "items": {
+            "$ref": "#/$defs/Stint"
+          },
+          "title": "Stints",
+          "type": "array"
+        },
+        "telemetry": {
+          "items": {
+            "$ref": "#/$defs/TelemetryPoint"
+          },
+          "title": "Telemetry",
+          "type": "array"
+        }
+      },
+      "required": [
+        "driver_id",
+        "practice_pace_s",
+        "long_run_pace_s",
+        "stints",
+        "telemetry"
+      ],
+      "title": "DriverAnalysis",
+      "type": "object"
+    },
+    "DriverPrediction": {
+      "additionalProperties": false,
+      "properties": {
+        "driver_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Driver Id",
+          "type": "string"
+        },
+        "rank": {
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "expected_position": {
+          "minimum": 1,
+          "title": "Expected Position",
+          "type": "number"
+        },
+        "p10": {
+          "minimum": 1,
+          "title": "P10",
+          "type": "integer"
+        },
+        "p90": {
+          "minimum": 1,
+          "title": "P90",
+          "type": "integer"
+        },
+        "win_probability": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Win Probability",
+          "type": "number"
+        },
+        "podium_probability": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Podium Probability",
+          "type": "number"
+        },
+        "top10_probability": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Top10 Probability",
+          "type": "number"
+        },
+        "position_probabilities": {
+          "items": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "title": "Position Probabilities",
+          "type": "array"
+        },
+        "explanations": {
+          "items": {
+            "$ref": "#/$defs/Explanation"
+          },
+          "title": "Explanations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "driver_id",
+        "rank",
+        "expected_position",
+        "p10",
+        "p90",
+        "win_probability",
+        "podium_probability",
+        "top10_probability",
+        "position_probabilities",
+        "explanations"
+      ],
+      "title": "DriverPrediction",
+      "type": "object"
+    },
+    "Evaluation": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "pending",
+            "evaluated"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "seasons": {
+          "items": {
+            "$ref": "#/$defs/SeasonEvaluation"
+          },
+          "title": "Seasons",
+          "type": "array"
+        },
+        "comparison": {
+          "items": {
+            "$ref": "#/$defs/ModelComparison"
+          },
+          "title": "Comparison",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "summary",
+        "seasons",
+        "comparison",
+        "limitations"
+      ],
+      "title": "Evaluation",
+      "type": "object"
+    },
+    "Event": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "season": {
+          "maximum": 2100,
+          "minimum": 2018,
+          "title": "Season",
+          "type": "integer"
+        },
+        "round": {
+          "maximum": 40,
+          "minimum": 1,
+          "title": "Round",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "circuit": {
+          "title": "Circuit",
+          "type": "string"
+        },
+        "country": {
+          "title": "Country",
+          "type": "string"
+        },
+        "timezone": {
+          "title": "Timezone",
+          "type": "string"
+        },
+        "sessions": {
+          "items": {
+            "$ref": "#/$defs/Session"
+          },
+          "title": "Sessions",
+          "type": "array"
+        },
+        "entrants": {
+          "items": {
+            "$ref": "#/$defs/Driver"
+          },
+          "title": "Entrants",
+          "type": "array"
+        },
+        "targets": {
+          "items": {
+            "$ref": "#/$defs/TargetState"
+          },
+          "title": "Targets",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "season",
+        "round",
+        "name",
+        "circuit",
+        "country",
+        "timezone",
+        "sessions",
+        "entrants",
+        "targets"
+      ],
+      "title": "Event",
+      "type": "object"
+    },
+    "Explanation": {
+      "additionalProperties": false,
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "contribution": {
+          "title": "Contribution",
+          "type": "number"
+        }
+      },
+      "required": [
+        "group",
+        "contribution"
+      ],
+      "title": "Explanation",
+      "type": "object"
+    },
+    "Forecast": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "event_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "target": {
+          "enum": [
+            "qualifying",
+            "race"
+          ],
+          "title": "Target",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "demonstration",
+            "reconstructed",
+            "issued"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "cutoff_at": {
+          "format": "date-time",
+          "title": "Cutoff At",
+          "type": "string"
+        },
+        "training_cutoff": {
+          "format": "date-time",
+          "title": "Training Cutoff",
+          "type": "string"
+        },
+        "model_version": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Model Version",
+          "type": "string"
+        },
+        "model_kind": {
+          "enum": [
+            "baseline",
+            "catboost"
+          ],
+          "title": "Model Kind",
+          "type": "string"
+        },
+        "sample_count": {
+          "const": 20000,
+          "default": 20000,
+          "title": "Sample Count",
+          "type": "integer"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "coverage": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "input_snapshot_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Input Snapshot Ids",
+          "type": "array"
+        },
+        "drivers": {
+          "items": {
+            "$ref": "#/$defs/DriverPrediction"
+          },
+          "minItems": 2,
+          "title": "Drivers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "event_id",
+        "target",
+        "kind",
+        "generated_at",
+        "cutoff_at",
+        "training_cutoff",
+        "model_version",
+        "model_kind",
+        "seed",
+        "coverage",
+        "drivers"
+      ],
+      "title": "Forecast",
+      "type": "object"
+    },
+    "Metrics": {
+      "additionalProperties": false,
+      "properties": {
+        "probability_loss": {
+          "minimum": 0,
+          "title": "Probability Loss",
+          "type": "number"
+        },
+        "position_mae": {
+          "minimum": 0,
+          "title": "Position Mae",
+          "type": "number"
+        },
+        "win_brier": {
+          "minimum": 0,
+          "title": "Win Brier",
+          "type": "number"
+        },
+        "podium_brier": {
+          "minimum": 0,
+          "title": "Podium Brier",
+          "type": "number"
+        },
+        "top10_brier": {
+          "minimum": 0,
+          "title": "Top10 Brier",
+          "type": "number"
+        }
+      },
+      "required": [
+        "probability_loss",
+        "position_mae",
+        "win_brier",
+        "podium_brier",
+        "top10_brier"
+      ],
+      "title": "Metrics",
+      "type": "object"
+    },
+    "ModelComparison": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "target": {
+          "enum": [
+            "qualifying",
+            "race"
+          ],
+          "title": "Target",
+          "type": "string"
+        },
+        "event_count": {
+          "minimum": 1,
+          "title": "Event Count",
+          "type": "integer"
+        },
+        "metrics": {
+          "$ref": "#/$defs/Metrics"
+        },
+        "promoted": {
+          "title": "Promoted",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "target",
+        "event_count",
+        "metrics",
+        "promoted"
+      ],
+      "title": "ModelComparison",
+      "type": "object"
+    },
+    "SeasonEvaluation": {
+      "additionalProperties": false,
+      "properties": {
+        "season": {
+          "title": "Season",
+          "type": "integer"
+        },
+        "target": {
+          "enum": [
+            "qualifying",
+            "race"
+          ],
+          "title": "Target",
+          "type": "string"
+        },
+        "event_count": {
+          "minimum": 1,
+          "title": "Event Count",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "reconstructed",
+            "prospective"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "metrics": {
+          "$ref": "#/$defs/Metrics"
+        },
+        "confidence_intervals": {
+          "items": {
+            "$ref": "#/$defs/ConfidenceInterval"
+          },
+          "title": "Confidence Intervals",
+          "type": "array"
+        },
+        "calibration": {
+          "items": {
+            "$ref": "#/$defs/CalibrationBin"
+          },
+          "title": "Calibration",
+          "type": "array"
+        }
+      },
+      "required": [
+        "season",
+        "target",
+        "event_count",
+        "kind",
+        "metrics"
+      ],
+      "title": "SeasonEvaluation",
+      "type": "object"
+    },
+    "Session": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "FP1",
+            "FP2",
+            "FP3",
+            "Q",
+            "SQ",
+            "SS",
+            "S",
+            "R"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "start": {
+          "format": "date-time",
+          "title": "Start",
+          "type": "string"
+        },
+        "end": {
+          "format": "date-time",
+          "title": "End",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "start",
+        "end"
+      ],
+      "title": "Session",
+      "type": "object"
+    },
+    "Stint": {
+      "additionalProperties": false,
+      "properties": {
+        "compound": {
+          "title": "Compound",
+          "type": "string"
+        },
+        "laps": {
+          "minimum": 1,
+          "title": "Laps",
+          "type": "integer"
+        },
+        "pace_s": {
+          "exclusiveMinimum": 0,
+          "title": "Pace S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "compound",
+        "laps",
+        "pace_s"
+      ],
+      "title": "Stint",
+      "type": "object"
+    },
+    "TargetState": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "enum": [
+            "qualifying",
+            "race"
+          ],
+          "title": "Target",
+          "type": "string"
+        },
+        "session_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "cutoff_at": {
+          "format": "date-time",
+          "title": "Cutoff At",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "scheduled",
+            "unavailable",
+            "issued",
+            "reconstructed"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "forecast_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Forecast Id"
+        },
+        "entrant_ids": {
+          "items": {
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+            "type": "string"
+          },
+          "title": "Entrant Ids",
+          "type": "array"
+        },
+        "roster_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Roster Source"
+        },
+        "roster_observed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Roster Observed At"
+        }
+      },
+      "required": [
+        "target",
+        "session_id",
+        "cutoff_at",
+        "state"
+      ],
+      "title": "TargetState",
+      "type": "object"
+    },
+    "TelemetryPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "distance_m": {
+          "minimum": 0,
+          "title": "Distance M",
+          "type": "number"
+        },
+        "speed_kph": {
+          "maximum": 450,
+          "minimum": 0,
+          "title": "Speed Kph",
+          "type": "number"
+        },
+        "throttle_pct": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Throttle Pct",
+          "type": "number"
+        },
+        "brake": {
+          "title": "Brake",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "distance_m",
+        "speed_kph",
+        "throttle_pct",
+        "brake"
+      ],
+      "title": "TelemetryPoint",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "demo_notice": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Demo Notice"
+    },
+    "events": {
+      "items": {
+        "$ref": "#/$defs/Event"
+      },
+      "title": "Events",
+      "type": "array"
+    },
+    "forecasts": {
+      "items": {
+        "$ref": "#/$defs/Forecast"
+      },
+      "title": "Forecasts",
+      "type": "array"
+    },
+    "analyses": {
+      "items": {
+        "$ref": "#/$defs/Analysis"
+      },
+      "title": "Analyses",
+      "type": "array"
+    },
+    "evaluation": {
+      "$ref": "#/$defs/Evaluation"
+    }
+  },
+  "required": [
+    "generated_at",
+    "demo_notice",
+    "events",
+    "forecasts",
+    "analyses",
+    "evaluation"
+  ],
+  "title": "SiteData",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

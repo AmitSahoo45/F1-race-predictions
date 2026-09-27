@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "f1forecast"
+version = "0.1.0"
+description = "Cutoff-aware Formula 1 forecasts and immutable static publication"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "pydantic>=2.11,<3", "numpy>=2.2,<3", "pandas>=2.2,<3",
+  "pyarrow>=19,<23", "duckdb>=1.3,<2", "httpx>=0.28,<1",
+  "fastf1>=3.6,<4", "catboost>=1.2.8,<2", "scipy>=1.15,<2"
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3,<9", "ruff>=0.12,<1", "pyright>=1.1.400,<2"]
+
+[project.scripts]
+f1forecast = "f1forecast.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pipeline/src/f1forecast"]
+
+[tool.pytest.ini_options]
+testpaths = ["pipeline/tests"]
+pythonpath = ["pipeline/src"]
+markers = ["network: opt-in provider integration tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.pyright]
+include = ["pipeline/src"]
+typeCheckingMode = "basic"
+venvPath = "."
+venv = ".venv"
+reportMissingTypeStubs = false
+

@@ -1,0 +1,223 @@
+{
+  "$defs": {
+    "ActualResult": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "enum": [
+            "qualifying",
+            "race"
+          ],
+          "title": "Target",
+          "type": "string"
+        },
+        "driver_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Driver Id",
+          "type": "string"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target",
+        "driver_id",
+        "status"
+      ],
+      "title": "ActualResult",
+      "type": "object"
+    },
+    "DriverAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "driver_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Driver Id",
+          "type": "string"
+        },
+        "practice_pace_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Practice Pace S"
+        },
+        "long_run_pace_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Long Run Pace S"
+        },
+        "stints": {
+          "items": {
+            "$ref": "#/$defs/Stint"
+          },
+          "title": "Stints",
+          "type": "array"
+        },
+        "telemetry": {
+          "items": {
+            "$ref": "#/$defs/TelemetryPoint"
+          },
+          "title": "Telemetry",
+          "type": "array"
+        }
+      },
+      "required": [
+        "driver_id",
+        "practice_pace_s",
+        "long_run_pace_s",
+        "stints",
+        "telemetry"
+      ],
+      "title": "DriverAnalysis",
+      "type": "object"
+    },
+    "Stint": {
+      "additionalProperties": false,
+      "properties": {
+        "compound": {
+          "title": "Compound",
+          "type": "string"
+        },
+        "laps": {
+          "minimum": 1,
+          "title": "Laps",
+          "type": "integer"
+        },
+        "pace_s": {
+          "exclusiveMinimum": 0,
+          "title": "Pace S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "compound",
+        "laps",
+        "pace_s"
+      ],
+      "title": "Stint",
+      "type": "object"
+    },
+    "TelemetryPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "distance_m": {
+          "minimum": 0,
+          "title": "Distance M",
+          "type": "number"
+        },
+        "speed_kph": {
+          "maximum": 450,
+          "minimum": 0,
+          "title": "Speed Kph",
+          "type": "number"
+        },
+        "throttle_pct": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Throttle Pct",
+          "type": "number"
+        },
+        "brake": {
+          "title": "Brake",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "distance_m",
+        "speed_kph",
+        "throttle_pct",
+        "brake"
+      ],
+      "title": "TelemetryPoint",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "demonstration",
+        "observed"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "source": {
+      "title": "Source",
+      "type": "string"
+    },
+    "circuit_points": {
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "type": "array"
+      },
+      "title": "Circuit Points",
+      "type": "array"
+    },
+    "drivers": {
+      "items": {
+        "$ref": "#/$defs/DriverAnalysis"
+      },
+      "title": "Drivers",
+      "type": "array"
+    },
+    "actuals": {
+      "items": {
+        "$ref": "#/$defs/ActualResult"
+      },
+      "title": "Actuals",
+      "type": "array"
+    }
+  },
+  "required": [
+    "event_id",
+    "kind",
+    "source",
+    "circuit_points",
+    "drivers",
+    "actuals"
+  ],
+  "title": "Analysis",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

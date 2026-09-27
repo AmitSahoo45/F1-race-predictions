@@ -1,0 +1,70 @@
+name: Publish weekend forecasts
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: forecast-publication
+  cancel-in-progress: false
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.publish.outputs.changed }}
+      published_sha: ${{ steps.publish.outputs.published_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.19"
+          enable-cache: true
+          python-version: "3.13"
+      - uses: actions/cache@v4
+        with:
+          path: data/archive
+          key: f1-session-cache-${{ github.run_id }}
+          restore-keys: f1-session-cache-
+      - run: uv sync --locked --no-dev
+      - name: Capture immutable baseline
+        run: cp site-data/forecasts/hashes.json "$RUNNER_TEMP/forecast-hashes.json"
+      - name: Ingest eligible sessions and issue forecasts
+        run: uv run --no-dev f1forecast tick --refresh-calendar | tee "$RUNNER_TEMP/forecast-run.json"
+      - run: uv run --no-dev f1forecast validate
+      - name: Verify old hashes remain unchanged
+        run: |
+          uv run --no-dev python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from f1forecast.publication import verify_archive
+          baseline = json.loads((Path(os.environ['RUNNER_TEMP']) / 'forecast-hashes.json').read_text())
+          verify_archive('site-data/forecasts', baseline)
+          PY
+      - name: Record forecast artifacts
+        id: publish
+        run: |
+          git add site-data
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "Publish immutable weekend forecast artifacts"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "published_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Execution summary
+        if: always()
+        run: cat "$RUNNER_TEMP/forecast-run.json" >> "$GITHUB_STEP_SUMMARY"
+  deploy:
+    needs: forecast
+    if: needs.forecast.outputs.changed == 'true'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      ref: ${{ needs.forecast.outputs.published_sha }}

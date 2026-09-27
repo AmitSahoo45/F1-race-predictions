@@ -1,0 +1,248 @@
+{
+  "$defs": {
+    "Coverage": {
+      "additionalProperties": false,
+      "properties": {
+        "available_sessions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Available Sessions",
+          "type": "array"
+        },
+        "missing_sessions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Sessions",
+          "type": "array"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Flags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "available_sessions",
+        "missing_sessions",
+        "summary",
+        "flags"
+      ],
+      "title": "Coverage",
+      "type": "object"
+    },
+    "DriverPrediction": {
+      "additionalProperties": false,
+      "properties": {
+        "driver_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Driver Id",
+          "type": "string"
+        },
+        "rank": {
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "expected_position": {
+          "minimum": 1,
+          "title": "Expected Position",
+          "type": "number"
+        },
+        "p10": {
+          "minimum": 1,
+          "title": "P10",
+          "type": "integer"
+        },
+        "p90": {
+          "minimum": 1,
+          "title": "P90",
+          "type": "integer"
+        },
+        "win_probability": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Win Probability",
+          "type": "number"
+        },
+        "podium_probability": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Podium Probability",
+          "type": "number"
+        },
+        "top10_probability": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Top10 Probability",
+          "type": "number"
+        },
+        "position_probabilities": {
+          "items": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "title": "Position Probabilities",
+          "type": "array"
+        },
+        "explanations": {
+          "items": {
+            "$ref": "#/$defs/Explanation"
+          },
+          "title": "Explanations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "driver_id",
+        "rank",
+        "expected_position",
+        "p10",
+        "p90",
+        "win_probability",
+        "podium_probability",
+        "top10_probability",
+        "position_probabilities",
+        "explanations"
+      ],
+      "title": "DriverPrediction",
+      "type": "object"
+    },
+    "Explanation": {
+      "additionalProperties": false,
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "contribution": {
+          "title": "Contribution",
+          "type": "number"
+        }
+      },
+      "required": [
+        "group",
+        "contribution"
+      ],
+      "title": "Explanation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "event_id": {
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "target": {
+      "enum": [
+        "qualifying",
+        "race"
+      ],
+      "title": "Target",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "demonstration",
+        "reconstructed",
+        "issued"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "cutoff_at": {
+      "format": "date-time",
+      "title": "Cutoff At",
+      "type": "string"
+    },
+    "training_cutoff": {
+      "format": "date-time",
+      "title": "Training Cutoff",
+      "type": "string"
+    },
+    "model_version": {
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+      "title": "Model Version",
+      "type": "string"
+    },
+    "model_kind": {
+      "enum": [
+        "baseline",
+        "catboost"
+      ],
+      "title": "Model Kind",
+      "type": "string"
+    },
+    "sample_count": {
+      "const": 20000,
+      "default": 20000,
+      "title": "Sample Count",
+      "type": "integer"
+    },
+    "seed": {
+      "title": "Seed",
+      "type": "integer"
+    },
+    "coverage": {
+      "$ref": "#/$defs/Coverage"
+    },
+    "input_snapshot_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Input Snapshot Ids",
+      "type": "array"
+    },
+    "drivers": {
+      "items": {
+        "$ref": "#/$defs/DriverPrediction"
+      },
+      "minItems": 2,
+      "title": "Drivers",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "event_id",
+    "target",
+    "kind",
+    "generated_at",
+    "cutoff_at",
+    "training_cutoff",
+    "model_version",
+    "model_kind",
+    "seed",
+    "coverage",
+    "drivers"
+  ],
+  "title": "Forecast",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}
