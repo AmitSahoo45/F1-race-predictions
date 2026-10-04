@@ -18,6 +18,7 @@ CIRCUIT_ZONES = {
     "interlagos": "America/Sao_Paulo", "vegas": "America/Los_Angeles", "losail": "Asia/Qatar",
     "yas_marina": "Asia/Dubai", "madring": "Europe/Madrid", "madrid": "Europe/Madrid",
     "paul_ricard": "Europe/Paris", "portimao": "Europe/Lisbon", "istanbul": "Europe/Istanbul",
+    "sepang": "Asia/Kuala_Lumpur",
 }
 
 

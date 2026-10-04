@@ -6,13 +6,15 @@ from pathlib import Path
 from .contracts import Evaluation, SiteData
 from .publication import publish_site
 from .registry import metric_contract
+from .report_contract import validate_report_format
 
 
-def publish_evaluation(report_paths: list[str], site_dir: str | Path) -> Evaluation:
-    reports = [json.loads(Path(p).read_text(encoding="utf-8")) for p in report_paths]
+def evaluation_from_reports(reports: list[dict]) -> Evaluation:
+    """Validate complete evidence before changing any public artifact."""
     seasons = []
     comparisons = []
     for report in reports:
+        validate_report_format(report)
         for period, year in [("locked_2025", 2025), ("separate_2026", 2026)]:
             # Report each target independently, never imply Q and R are independent races.
             for model_name in ("baseline", "learned"):
@@ -62,7 +64,7 @@ def publish_evaluation(report_paths: list[str], site_dir: str | Path) -> Evaluat
                 )
     if not seasons:
         raise ValueError("no evaluated held-out events; cannot publish accuracy claims")
-    evidence = Evaluation(
+    return Evaluation(
         status="evaluated",
         summary="Chronological historical reconstruction; not prospective performance.",
         seasons=seasons,
@@ -70,11 +72,16 @@ def publish_evaluation(report_paths: list[str], site_dir: str | Path) -> Evaluat
         limitations=[
             "Archives can include later corrections; these results are historical reconstructions.",
             "2025 is held out; 2026 is reported separately. Counts are evaluated target sessions.",
-            "Incomplete result orders, DNS and disqualifications are excluded from full-order metrics; see the report.",
+            "Incomplete result orders, roster mismatches, DNS, disqualifications and missing required inputs are excluded from headline metrics; see each event's exclusion reason in the report.",
             "Metric confidence intervals resample events; driver rows are not independent races.",
             "A rank-utility model does not separately model retirement risk or strategy.",
         ],
     )
+
+
+def publish_evaluation(report_paths: list[str], site_dir: str | Path) -> Evaluation:
+    reports = [json.loads(Path(p).read_text(encoding="utf-8")) for p in report_paths]
+    evidence = evaluation_from_reports(reports)
     root = Path(site_dir)
     site = SiteData.model_validate_json((root / "site.json").read_text(encoding="utf-8"))
     site.evaluation = evidence

@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from catboost import CatBoostError, CatBoostRanker, EFstrType, Pool
 
-from f1forecast.features import NUMERIC_FEATURES
+from f1forecast.features import COMPOUND_FEATURES, NUMERIC_FEATURES
 
 FEATURE_GROUPS: dict[str, str] = {
     "recent_qualifying_rank": "recent qualifying form",
@@ -25,6 +25,7 @@ FEATURE_GROUPS: dict[str, str] = {
     "consistency_s": "stint consistency",
     "usable_laps": "practice coverage",
     "tyre_age": "tyre context",
+    **dict.fromkeys(COMPOUND_FEATURES, "tyre context"),
     "mean_speed": "public telemetry summary",
     "mean_throttle": "public telemetry summary",
     "brake_fraction": "public telemetry summary",

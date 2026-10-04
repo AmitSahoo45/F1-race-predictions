@@ -76,16 +76,17 @@ def export_analysis(
                 continue
             code = row.iloc[0]["driver_code"]
             laps = tables.get("laps", pd.DataFrame())
-            if not laps.empty and {"Driver", "usable", "lap_seconds", "Compound"}.issubset(
+            if not laps.empty and {"Driver", "usable", "lap_seconds", "Compound", "Stint"}.issubset(
                 laps.columns
             ):
                 usable = laps.loc[
                     (_column(laps, "Driver") == code)
                     & _column(laps, "usable")
                     & _column(laps, "Compound").notna()
+                    & _column(laps, "Stint").notna()
                     & _column(laps, "lap_seconds").notna()
                 ]
-                keys = ["Compound"] + (["Stint"] if "Stint" in usable else [])
+                keys = ["Compound", "Stint"]
                 for key, stint_laps in usable.groupby(keys, dropna=False, sort=False):
                     stint_laps = cast(pd.DataFrame, stint_laps)
                     compound = key[0] if isinstance(key, tuple) else key
@@ -153,10 +154,20 @@ def export_analysis(
                     )
                 )
     newest = max(manifest["retrieved_at"] for manifest, _, _ in snapshots)
+    sources = ", ".join(sorted({str(manifest["source"]) for manifest, _, _ in snapshots}))
+    result_sources = ", ".join(sorted({
+        str(manifest.get("sources", {}).get("results", manifest["source"]))
+        for manifest, _, _ in snapshots
+        if manifest.get("session_type") in {"Q", "R"}
+    }))
     return Analysis(
         event_id=event_id,
         kind="observed",
-        source=f"FastF1 public laps, telemetry and weather; Jolpica circuit identity where available. Archived retrieval latest {newest}.",
+        source=(
+            f"{sources} public observations. "
+            f"Classification sources: {result_sources or 'not archived'}. "
+            f"Archived retrieval latest {newest}."
+        ),
         circuit_points=circuit_points,
         drivers=drivers,
         actuals=actuals,

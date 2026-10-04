@@ -73,8 +73,11 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
 .closing p { font-size: 1.1rem; color: rgb(var(--muted)); margin-bottom: 30px; }
 .page-main { padding-top: 75px; min-height: 75svh; }
 .page-eyebrow { font: .7rem var(--font-plex), monospace; color: rgb(var(--accent)); letter-spacing: .13em; }
-.page-title { font-size: clamp(4.2rem, 8.5vw, 9rem); line-height: .9; letter-spacing: -.08em; margin: 37px 0 30px; font-weight: 700; }
+.page-title { font-size: clamp(4.2rem, 8.5vw, 9rem); line-height: .9; letter-spacing: -.08em; margin: 37px 0 30px; font-weight: 700; overflow-wrap: anywhere; }
 .page-lead { color: rgb(var(--muted)); max-width: 710px; font-size: 1.15rem; line-height: 1.65; margin-bottom: 90px; }
+.season-nav { display: flex; flex-wrap: wrap; gap: 10px; margin: -35px 0 45px; }
+.season-nav a { border: 1px solid rgb(var(--line)); padding: 12px 16px; font: .75rem var(--font-plex), monospace; }
+.season-nav a[aria-current="page"] { border-color: rgb(var(--accent)); background: rgb(var(--accent)); color: rgb(var(--paper)); }
 .calendar-head, .calendar-row { display: grid; grid-template-columns: 90px minmax(250px, 1.5fr) minmax(180px, .8fr) minmax(140px, .5fr); align-items: center; gap: 18px; }
 .calendar-head { color: rgb(var(--muted)); font: .63rem var(--font-plex), monospace; letter-spacing: .1em; border-bottom: 1px solid rgb(var(--line)); padding-bottom: 15px; }
 .calendar-list, .forecast-tower, .session-list { padding: 0; margin: 0; list-style: none; }

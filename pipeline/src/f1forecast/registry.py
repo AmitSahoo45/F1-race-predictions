@@ -11,6 +11,7 @@ from pydantic import Field
 
 from .contracts import Contract, Identifier, Metrics, Target, UTCDate
 from .publication import atomic_write, canonical_json
+from .report_contract import validate_report_format
 
 
 def validated_patterns(report: dict, kind: str) -> list[list[str]]:
@@ -105,6 +106,7 @@ def approve_model(
         json.loads(report_path.read_text(encoding="utf-8")),
     )
     target = metadata["target"]
+    validate_report_format(report)
     if report["target"] != target:
         raise ValueError("report target does not match model")
     if not metadata.get("training_config") or metadata["training_config"] != report.get(

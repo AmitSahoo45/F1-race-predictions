@@ -259,6 +259,8 @@ def test_registry_pattern_gate_needs_scored_report_evidence_not_metadata_claims(
         "validated_missing_patterns": [["missing-tyre-context"]],
     }
     report = {
+        "evaluation_schema_version": "2",
+        "events": [{"required_inputs_available": True, "unexpected_actual_entrants": []}],
         "target": "qualifying",
         "training_config": metadata["training_config"],
         "input_dataset_sha256": metadata["input_dataset_sha256"],

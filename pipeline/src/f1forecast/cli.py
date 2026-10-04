@@ -43,6 +43,11 @@ def parser() -> argparse.ArgumentParser:
     )
     prepare.add_argument("--archive", default="data/archive")
     prepare.add_argument("--output", default="data/training.parquet")
+    prepare.add_argument(
+        "--snapshot-files",
+        action="store_true",
+        help="Read immutable Parquet snapshots without opening the catalog",
+    )
     for command in ("train", "evaluate"):
         model = commands.add_parser(command)
         model.add_argument("target", choices=["qualifying", "race"])
@@ -61,6 +66,11 @@ def parser() -> argparse.ArgumentParser:
     history = commands.add_parser("export-history", help="Package derived summaries for inference")
     history.add_argument("--archive", default="data/archive")
     history.add_argument("--output", default="data/history.parquet")
+    history.add_argument(
+        "--snapshot-files",
+        action="store_true",
+        help="Read immutable snapshots without opening the catalog",
+    )
     calendar = commands.add_parser("sync-calendar")
     calendar.add_argument("year", type=int)
     calendar.add_argument("--site-data", default="site-data")
@@ -205,7 +215,7 @@ def dispatch(args: argparse.Namespace) -> int:
     elif command == "prepare":
         from .datasets import prepare_training_data
 
-        data = prepare_training_data(args.archive, args.output)
+        data = prepare_training_data(args.archive, args.output, use_catalog=not args.snapshot_files)
         print(f"Prepared {len(data)} driver-target rows across {data.event_id.nunique()} events.")
     elif command in ("train", "evaluate"):
         from .training import fit_final_model, walk_forward_backtest
@@ -240,7 +250,9 @@ def dispatch(args: argparse.Namespace) -> int:
 
         destination = Path(args.output)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        load_summaries(args.archive).to_parquet(destination, index=False)
+        load_summaries(args.archive, use_catalog=not args.snapshot_files).to_parquet(
+            destination, index=False
+        )
     elif command == "sync-calendar":
         from .calendar import sync_calendar
 

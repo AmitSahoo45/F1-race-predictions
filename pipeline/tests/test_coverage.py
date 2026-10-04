@@ -29,11 +29,15 @@ class Calendar:
         ]
 
 
-def _snapshot(root, session_id, source, *, completed, complete, source_files=None):
+def _snapshot(
+    root, session_id, source, *, completed, complete, source_files=None,
+    coverage_overrides=None, sources=None,
+):
     write_snapshot(
         root,
         {
             "session_id": session_id,
+            "session_type": session_id.rsplit("-", 1)[-1],
             "retrieved_at": "2025-04-19T12:00:00+00:00",
             "source": source,
             "coverage": {
@@ -45,12 +49,14 @@ def _snapshot(root, session_id, source, *, completed, complete, source_files=Non
                 "weather_rows": 1,
                 "circuit_points": 2,
                 "missing_results": False,
+                **(coverage_overrides or {}),
             },
+            "sources": sources or {},
             "source_files": source_files or [],
             "extraction_version": "fastf1-merged-v1",
             "provenance": "retrospective",
         },
-        pd.DataFrame([{"session_id": session_id}]),
+        pd.DataFrame([{"session_id": session_id, "driver_code": "AAA", "team_id": "test_team"}]),
         {},
     )
 
@@ -99,3 +105,62 @@ def test_coverage_report_compares_completed_calendar_to_latest_immutable_files(
     assert report["extraction_versions"] == {"fastf1-merged-v1": 2}
     assert report["archive_bytes"] > 0
     assert "not historical availability" in report["availability_note"]
+
+
+def test_coverage_counts_driver_sessions_and_separates_intentional_target_omission(tmp_path):
+    _snapshot(
+        tmp_path, "2025-01-FP1", "FastF1", completed=True, complete=False,
+        coverage_overrides={
+            "missing_telemetry_drivers": ["AAA", "BBB"],
+            "missing_lap_drivers": ["CCC", "DDD", "EEE"],
+            "unmatched_identity_drivers": ["AAA", "BBB"],
+            "circuit_points": 0,
+            "rejected_telemetry_drivers": {"AAA": "invalid distance"},
+            "invalid_lap_timestamp_rows": 4,
+            "out_of_pace_range_laps": 2,
+        },
+    )
+    # Existing immutable bulk snapshots have the source label but no new field.
+    _snapshot(
+        tmp_path, "2025-01-Q", "TracingInsights/2025@abc", completed=True, complete=False,
+        coverage_overrides={
+            "missing_telemetry_drivers": ["AAA", "BBB", "CCC"],
+            "unmatched_identity_drivers": [], "circuit_points": 0,
+        },
+        sources={"telemetry": "not fetched; target-session telemetry excluded"},
+    )
+    report = build_coverage_report(tmp_path, [2025], now=NOW, calendar_provider=Calendar())
+    assert report["missing_telemetry_driver_sessions"] == 2
+    assert report["sessions_with_missing_telemetry"] == 1
+    assert report["missing_lap_driver_sessions"] == 3
+    assert report["sessions_with_missing_laps"] == 1
+    assert report["unmatched_identity_driver_sessions"] == 2
+    assert report["sessions_with_unmatched_identities"] == 1
+    assert report["intentional_telemetry_omission_sessions"] == 1
+    assert report["intentional_telemetry_omission_driver_sessions"] == 3
+    assert report["missing_circuit_sessions"] == 1
+    assert report["fully_covered_sessions"] == 1
+    assert report["rejected_telemetry_driver_sessions"] == 1
+    assert report["invalid_lap_timestamp_rows"] == 4
+    assert report["out_of_pace_range_laps"] == 2
+
+
+def test_team_coverage_checks_legacy_summaries_and_cannot_be_bypassed_by_telemetry_policy(tmp_path):
+    _snapshot(tmp_path, "2025-01-FP1", "FastF1", completed=True, complete=True)
+    _snapshot(
+        tmp_path, "2025-01-Q", "TracingInsights/2025@abc", completed=True, complete=False,
+        coverage_overrides={"missing_team_drivers": ["BBB"]},
+        sources={"telemetry": "not fetched; target-session telemetry excluded"},
+    )
+    summary_file = next((tmp_path / "snapshots").glob("2025-01-FP1_*/summary.parquet"))
+    pd.DataFrame([
+        {"driver_code": "AAA", "team_id": "None"},
+        {"driver_code": "BBB", "team_id": None},
+    ]).to_parquet(summary_file, index=False)
+    report = build_coverage_report(tmp_path, [2025], now=NOW, calendar_provider=Calendar())
+    assert report["missing_team_driver_sessions"] == 3
+    assert report["sessions_with_missing_teams"] == 2
+    assert report["fully_covered_sessions"] == 0
+    assert report["missing_team_drivers_by_session"] == {
+        "2025-01-FP1": ["AAA", "BBB"], "2025-01-Q": ["BBB"],
+    }

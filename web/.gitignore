@@ -6,4 +6,5 @@ test-results/
 .lighthouseci/
 tests/.generated/
 .apex-generated-assets.json
+public/evaluation-reports/
 *.tsbuildinfo

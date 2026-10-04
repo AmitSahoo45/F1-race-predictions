@@ -26,3 +26,4 @@ pipeline/tests/_tmp/
 pytest-cache-files-*/
 web/.apex-generated-assets.json
 web/tests/e2e/__screenshots__/
+docs/

@@ -14,12 +14,30 @@ from .publication import canonical_json, publish_forecast, publish_site, verify_
 from .rosters import drivers_from_snapshots as _drivers
 
 
+def reconstruction_unavailable_reason(record: dict) -> str | None:
+    """Apply the live input/roster policy to historical publication as well."""
+    if not isinstance(record.get("required_inputs_available"), bool) or not isinstance(
+        record.get("unexpected_actual_entrants"), list
+    ):
+        return "Forecast unavailable: regenerate legacy evidence with explicit input and roster diagnostics."
+    if record.get("unexpected_actual_entrants"):
+        return "Forecast unavailable: the eligible pre-target roster is incomplete."
+    if record.get("required_inputs_available") is False:
+        detail = (
+            record.get("required_input_unavailability_reason") or "Required inputs are missing."
+        )
+        return f"Forecast unavailable: {detail}"
+    return None
+
+
 def forecast_from_record(
     event: Event, record: dict, report: dict, *, model_choice: str, now: datetime | None = None
 ) -> Forecast:
     """Use the exact saved fold distributions, never the final all-history model."""
     if record["event_id"] != event.id:
         raise ValueError("backtest event does not match manifest event")
+    if reason := reconstruction_unavailable_reason(record):
+        raise ValueError(reason)
     block = record.get(f"{model_choice}_forecast")
     if model_choice not in {"baseline", "learned"} or not block:
         raise ValueError("requested chronological fold is unavailable")
@@ -37,6 +55,11 @@ def forecast_from_record(
         "choice": model_choice,
     }
     digest = hashlib.sha256(canonical_json(recipe)).hexdigest()[:12]
+    explanations = block.get("explanations", {})
+    if "explanations" in block and (
+        not isinstance(explanations, dict) or set(explanations) != set(block["driver_ids"])
+    ):
+        raise ValueError("saved fold explanations must match forecast driver identities")
     predictions = []
     for rank, i in enumerate(np.argsort(block["expected_positions"], kind="stable"), 1):
         probabilities = block["position_probabilities"][i]
@@ -52,7 +75,7 @@ def forecast_from_record(
                 "podium_probability": block["podium_probabilities"][i],
                 "top10_probability": block["top_ten_probabilities"][i],
                 "position_probabilities": probabilities,
-                "explanations": [],
+                "explanations": explanations.get(block["driver_ids"][i], []),
             }
         )
     used = sorted({s for s in record.get("used_session_ids", []) if s.startswith(event.id + "-")})
@@ -97,7 +120,7 @@ def publish_history(
     from .archive import load_event_snapshots
     from .calendar import event_from_race
     from .providers import JolpicaProvider
-    from .reporting import publish_evaluation
+    from .reporting import evaluation_from_reports, publish_evaluation
 
     root = Path(site_dir)
     clock = now or datetime.now(UTC)
@@ -105,6 +128,9 @@ def publish_history(
     for report in reports:
         if not report.get("input_dataset_sha256") or not report.get("events"):
             raise ValueError("historical publication requires reproducible backtest records")
+    # A malformed/empty evaluation cannot leave new forecasts paired with stale
+    # performance metrics. Validate the replacement before any artifact writes.
+    evaluated = evaluation_from_reports(reports) if reports else None
     previous = (
         SiteData.model_validate_json((root / "site.json").read_text(encoding="utf-8"))
         if (root / "site.json").exists()
@@ -118,6 +144,18 @@ def publish_history(
             event = event_from_race(race)
             snapshots = load_event_snapshots(archive_dir, event.id, use_catalog=use_catalog)
             event.entrants = _drivers(snapshots)
+            calendar_cutoffs = {t.target: t.cutoff_at for t in event.targets}
+            observed_schedule = {m["session_id"]: m for m, _, _ in snapshots}
+            # Observed history follows verified archive times, including overnight
+            # events and postponed sessions. Future sessions retain the calendar.
+            for session in event.sessions:
+                if manifest := observed_schedule.get(session.id):
+                    session.start = datetime.fromisoformat(manifest["session_start"])
+                    session.end = datetime.fromisoformat(manifest["session_end"])
+            for target in event.targets:
+                session = next(s for s in event.sessions if s.id == target.session_id)
+                target.cutoff_at = session.start - timedelta(minutes=30)
+            event.sessions.sort(key=lambda session: session.start)
             old = next((e for e in previous.events if e.id == event.id), None) if previous else None
             if snapshots:
                 analyses.append(export_analysis(event.id, archive_dir, use_catalog=use_catalog))
@@ -156,24 +194,37 @@ def publish_history(
                 )
                 # Development-selected models are shown only on the held-out periods.
                 if year >= 2025 and record and report and record.get("training_cutoff"):
+                    if reason := reconstruction_unavailable_reason(record):
+                        target.state, target.reason = "unavailable", reason
+                        continue
                     choice = (
                         "learned"
                         if report.get("promotion_passed") and record.get("learned_forecast")
                         else "baseline"
                     )
                     historical_cutoff = datetime.fromisoformat(record["cutoff"])
-                    changed_schedule = historical_cutoff != target.cutoff_at
-                    if changed_schedule:
-                        manifest = next((m for m, _, _ in snapshots
-                                         if m["session_id"] == target.session_id), None)
-                        if manifest is None or datetime.fromisoformat(manifest["session_start"]) != historical_cutoff + timedelta(minutes=30):
-                            raise ValueError("historical cutoff conflicts with schedule without matching archived session evidence")
+                    changed_schedule = historical_cutoff != calendar_cutoffs[target.target]
+                    if historical_cutoff != target.cutoff_at:
+                        manifest = next(
+                            (m for m, _, _ in snapshots if m["session_id"] == target.session_id),
+                            None,
+                        )
+                        if manifest is None or datetime.fromisoformat(
+                            manifest["session_start"]
+                        ) != historical_cutoff + timedelta(minutes=30):
+                            raise ValueError(
+                                "historical cutoff conflicts with schedule without matching archived session evidence"
+                            )
                         target.cutoff_at = historical_cutoff
                         event.sessions = [
-                            s.model_copy(update={
-                                "start": datetime.fromisoformat(manifest["session_start"]),
-                                "end": datetime.fromisoformat(manifest["session_end"]),
-                            }) if s.id == target.session_id else s
+                            s.model_copy(
+                                update={
+                                    "start": datetime.fromisoformat(manifest["session_start"]),
+                                    "end": datetime.fromisoformat(manifest["session_end"]),
+                                }
+                            )
+                            if s.id == target.session_id
+                            else s
                             for s in event.sessions
                         ]
                     forecast = forecast_from_record(
@@ -206,21 +257,17 @@ def publish_history(
                         else "No eligible chronological forecast is available for this session."
                     )
             events.append(Event.model_validate(event.model_dump()))
-    evaluation = (
-        previous.evaluation
-        if previous and previous.evaluation.status == "evaluated"
-        else {
-            "status": "pending",
-            "summary": "Real historical data ingestion and chronological evaluation are in progress. No model accuracy claim is published yet.",
-            "seasons": [],
-            "comparison": [],
-            "limitations": [
-                "Archived data can include later corrections; backtests are historical reconstructions.",
-                "Public telemetry omits fuel loads, setups and many team sensor channels.",
-                "Prospective forecasts require an approved model and eligible data before the target cutoff.",
-            ],
-        }
-    )
+    evaluation = evaluated or {
+        "status": "pending",
+        "summary": "Real historical data ingestion and chronological evaluation are in progress. No model accuracy claim is published yet.",
+        "seasons": [],
+        "comparison": [],
+        "limitations": [
+            "Archived data can include later corrections; backtests are historical reconstructions.",
+            "Public telemetry omits fuel loads, setups and many team sensor channels.",
+            "Prospective forecasts require an approved model and eligible data before the target cutoff.",
+        ],
+    }
     site = SiteData.model_validate(
         {
             "generated_at": clock,

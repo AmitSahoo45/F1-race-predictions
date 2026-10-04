@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 
 from f1forecast.calendar import event_from_race
-from f1forecast.providers import JolpicaProvider, RawSession
+from f1forecast.providers import JolpicaProvider, RawSession, SourceValidationError
 
 # Reviewed public revisions. Changing one requires revalidation of the overlap
 # comparisons and creates a different set of immutable source-file identities.
@@ -58,6 +58,10 @@ class PracticeRosterProvider(Protocol):
     def fetch_driver_list(
         self, year: int, event: str | int, session_type: str
     ) -> tuple[pd.DataFrame, dict[str, str | int]]: ...
+
+    def fetch_schedule(
+        self, year: int, event: int, session_type: str
+    ) -> tuple[pd.Timestamp, dict[str, str | int]]: ...
 
 
 def _canonical_source_record(url: str, payload: Any) -> dict[str, str | int]:
@@ -179,7 +183,7 @@ class TracingInsightsProvider:
             try:
                 payload = json.loads(content)
             except json.JSONDecodeError as exc:
-                raise ValueError(f"invalid bulk source JSON: {url}") from exc
+                raise SourceValidationError(f"invalid bulk source JSON: {url}") from exc
             return payload, {
                 "url": url,
                 "sha256": sha256(content).hexdigest(),
@@ -192,16 +196,20 @@ class TracingInsightsProvider:
     @staticmethod
     def _laps(payload: Any) -> pd.DataFrame:
         if not isinstance(payload, dict):
-            raise TypeError("session_laptimes.json must be a columnar object")
+            raise SourceValidationError("session_laptimes.json must be a columnar object")
         needed = {"drv", "dNum", "team", "lap", "time", "lSD", "lST", "iacc", "del"}
         if missing := needed - set(payload):
-            raise ValueError(f"session_laptimes.json missing {sorted(missing)}")
+            raise SourceValidationError(f"session_laptimes.json missing {sorted(missing)}")
         try:
             source = pd.DataFrame(payload)
         except ValueError as exc:
-            raise ValueError("session_laptimes.json columns have unequal lengths") from exc
+            raise SourceValidationError("session_laptimes.json columns have unequal lengths") from exc
         if source.empty or source["drv"].nunique() < 2:
-            raise ValueError("session_laptimes.json has insufficient driver coverage")
+            raise SourceValidationError("session_laptimes.json has insufficient driver coverage")
+        for identity in ("drv", "dNum"):
+            values = source[identity]
+            if values.isna().any() or values.astype(str).str.strip().isin({"", "None", "nan"}).any():
+                raise SourceValidationError("missing bulk driver identity")
         n = len(source)
 
         def col(name: str, default: Any = np.nan) -> pd.Series:
@@ -220,6 +228,7 @@ class TracingInsightsProvider:
                 ),
                 "Compound": col("compound").replace("None", None),
                 "TyreLife": _seconds(col("life")),
+                "Stint": _seconds(col("stint")),
                 "IsAccurate": col("iacc", False).map(lambda value: value is True),
                 "Deleted": col("del", True).map(lambda value: value is True),
                 "PitInTime": _timedelta(col("pin")),
@@ -228,13 +237,13 @@ class TracingInsightsProvider:
             }
         )
         if laps.duplicated(["Driver", "LapNumber"]).any():
-            raise ValueError("duplicate bulk lap identity")
+            raise SourceValidationError("duplicate bulk lap identity")
         return laps
 
     @staticmethod
     def _weather(payload: Any) -> pd.DataFrame:
         if not isinstance(payload, dict) or not {"wAT", "wTT"}.issubset(payload):
-            raise ValueError("weather.json needs ambient and track temperatures")
+            raise SourceValidationError("weather.json needs ambient and track temperatures")
         frame = pd.DataFrame(
             {
                 "AirTemp": pd.to_numeric(pd.Series(payload["wAT"]), errors="coerce"),
@@ -242,19 +251,19 @@ class TracingInsightsProvider:
             }
         )
         if frame.empty or frame["AirTemp"].isna().all() or frame["TrackTemp"].isna().all():
-            raise ValueError("weather.json contains no usable conditions")
+            raise SourceValidationError("weather.json contains no usable conditions")
         return frame
 
     @staticmethod
     def _results(rows: list[dict], target: str) -> pd.DataFrame:
         if not rows or len(rows) < 2:
-            raise ValueError(f"Jolpica {target} classifications unavailable")
+            raise SourceValidationError(f"Jolpica {target} classifications unavailable")
         records = []
         for row in rows:
             driver = row.get("Driver") or {}
             code = driver.get("code")
             if not code:
-                raise ValueError("Jolpica classification missing driver code")
+                raise SourceValidationError("Jolpica classification missing driver code")
             position = pd.to_numeric(row.get("position"), errors="coerce")
             record = {
                 "Abbreviation": code,
@@ -269,17 +278,17 @@ class TracingInsightsProvider:
             records.append(record)
         result = pd.DataFrame(records)
         if result["Abbreviation"].duplicated().any():
-            raise ValueError("duplicate Jolpica classification driver")
+            raise SourceValidationError("duplicate Jolpica classification driver")
         return result
 
     @staticmethod
     def _trace(payload: Any) -> pd.DataFrame:
         source = payload.get("tel") if isinstance(payload, dict) else None
         if not isinstance(source, dict):
-            raise TypeError("telemetry JSON missing tel object")
+            raise SourceValidationError("telemetry JSON missing tel object")
         required = {"distance", "speed", "throttle", "brake"}
         if missing := required - set(source):
-            raise ValueError(f"telemetry JSON missing {sorted(missing)}")
+            raise SourceValidationError(f"telemetry JSON missing {sorted(missing)}")
         try:
             frame = pd.DataFrame(
                 {
@@ -290,13 +299,13 @@ class TracingInsightsProvider:
                 }
             )
         except ValueError as exc:
-            raise ValueError("telemetry JSON channels have unequal lengths") from exc
+            raise SourceValidationError("telemetry JSON channels have unequal lengths") from exc
         if frame.empty:
-            raise ValueError("telemetry JSON has no samples")
+            raise SourceValidationError("telemetry JSON has no samples")
         for source_name, output_name in (("x", "X"), ("y", "Y")):
             if source_name in source:
                 if len(source[source_name]) != len(frame):
-                    raise ValueError("telemetry position channel has unequal length")
+                    raise SourceValidationError("telemetry position channel has unequal length")
                 frame[output_name] = source[source_name]
         return frame
 
@@ -322,6 +331,9 @@ class TracingInsightsProvider:
         now = pd.Timestamp(self.now())
         if now.tzinfo is None or now < pd.Timestamp(grand_prix.end) + timedelta(hours=24):
             raise ValueError("bulk adapter requires a fully past Grand Prix weekend")
+        session_start, schedule_source = self.practice_roster.fetch_schedule(year, round_number, kind)
+        if session_start.tzinfo is None or session_start >= now:
+            raise SourceValidationError("FastF1 schedule must provide a past UTC session start")
         commit = COMMITS[year]
         event_name = self.event_name_overrides.get((year, round_number), race["raceName"])
         if not isinstance(event_name, str) or not event_name:
@@ -330,14 +342,14 @@ class TracingInsightsProvider:
             f"https://raw.githubusercontent.com/TracingInsights/{year}/{commit}/"
             f"{quote(event_name, safe='')}/{quote(SESSION_FOLDERS[kind], safe='')}"
         )
-        source_files: list[dict[str, str | int]] = []
+        source_files: list[dict[str, str | int]] = [schedule_source]
         payloads = {}
         for name in ("session_laptimes.json", "weather.json", "drivers.json"):
             payloads[name], evidence = self._read_json(f"{base}/{name}", commit)
             source_files.append(evidence)
         drivers = payloads["drivers.json"]
         if not isinstance(drivers, dict) or not isinstance(drivers.get("drivers"), list):
-            raise TypeError("drivers.json missing driver roster")
+            raise SourceValidationError("drivers.json missing driver roster")
         laps = self._laps(payloads["session_laptimes.json"])
         weather = self._weather(payloads["weather.json"])
         calendar_url = f"{_JOLPICA_BASE}/{year}.json"
@@ -356,7 +368,7 @@ class TracingInsightsProvider:
                 results, roster_source = self.practice_roster.fetch_driver_list(
                     year, round_number, kind
                 )
-            except Exception as exc:
+            except (SourceValidationError, httpx.HTTPError, OSError) as exc:
                 raise PracticeRosterUnavailableError(
                     f"{year}-{round_number:02d}-{kind} same-session FastF1 DriverList unavailable"
                 ) from exc
@@ -412,7 +424,7 @@ class TracingInsightsProvider:
                     source_files.append(evidence)
         last_lap = laps["LapStartDate"].max()
         longest_lap = laps["LapTime"].max()
-        end = pd.Timestamp(source_session.end)
+        end = session_start + (source_session.end - source_session.start)
         if pd.notna(last_lap):
             end = max(end, last_lap + longest_lap if pd.notna(longest_lap) else last_lap)
         if end >= now:
@@ -426,7 +438,7 @@ class TracingInsightsProvider:
             "results": "Jolpica official classification"
             if kind in {"Q", "R"}
             else "FastF1 same-session DriverList",
-            "schedule": "Jolpica calendar",
+            "schedule": "FastF1 UTC event schedule; Jolpica event/circuit identity",
             "driver_identity": "Jolpica driverId with source driver code fallback",
         }
         return RawSession(
@@ -434,7 +446,7 @@ class TracingInsightsProvider:
             event_id=f"{year}-{round_number:02d}",
             circuit_id=race["Circuit"]["circuitId"],
             session_type=kind,
-            session_start=pd.Timestamp(source_session.start),
+            session_start=session_start,
             session_end=end,
             laps=laps,
             results=results,
@@ -450,4 +462,27 @@ class TracingInsightsProvider:
                 "; Jolpica classification present for Q/R; FastF1 Finalised not asserted"
             ),
             extraction_version="fastf1-merged-v1",
+            telemetry_omission_reason="target-session telemetry excluded" if kind in {"Q", "R"} else None,
         )
+
+
+def restore_source_stints(archived_laps: pd.DataFrame, payload: Any) -> pd.DataFrame | None:
+    """Restore only source stint IDs after an exact driver/lap identity check."""
+    if not isinstance(payload, dict) or "stint" not in payload:
+        return None
+    source = TracingInsightsProvider._laps(payload)
+    if source["Stint"].isna().all():
+        return None
+    keys = ["Driver", "LapNumber"]
+    archived_index = pd.MultiIndex.from_frame(archived_laps[keys])
+    source = source.set_index(keys)
+    if (
+        archived_index.has_duplicates
+        or source.index.has_duplicates
+        or len(source) != len(archived_laps)
+        or set(source.index) != set(archived_index)
+    ):
+        raise SourceValidationError("source stint identity mismatch with archived laps")
+    output = archived_laps.copy()
+    output["Stint"] = source["Stint"].reindex(archived_index).to_numpy()
+    return output

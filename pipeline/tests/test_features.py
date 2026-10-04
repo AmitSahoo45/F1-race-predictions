@@ -54,6 +54,51 @@ def _target(target: str = "qualifying"):
     )
 
 
+def test_team_identity_aliases_match_history_without_merging_prior_brand():
+    rows = pd.DataFrame([
+        _row("2025-01", "Q", "a", "2025-03-01T09:00Z", "2025-03-01T10:00Z",
+             team_id="racing_bulls", position=1),
+        _row("2025-01", "Q", "b", "2025-03-01T09:00Z", "2025-03-01T10:00Z",
+             team_id="blue", position=2),
+        _row("2024-01", "Q", "a", "2024-03-01T09:00Z", "2024-03-01T10:00Z",
+             team_id="rb", position=2),
+        _row("2024-01", "Q", "b", "2024-03-01T09:00Z", "2024-03-01T10:00Z",
+             team_id="blue", position=1),
+    ])
+    targets = _target()
+    targets.loc[0, "team_id"] = "RB F1 Team"
+    got = build_feature_rows(rows, targets).set_index("driver_id")
+    assert got.loc["a", "team_id"] == "racing_bulls"
+    assert got.loc["a", "recent_team_qualifying_rank"] == pytest.approx(0.0)
+    # Both inputs retain their source values.
+    assert targets.loc[0, "team_id"] == "RB F1 Team"
+    assert rows.loc[2, "team_id"] == "rb"
+    rows.loc[0, "team_id"] = "rb_f1_team"
+    targets.loc[0, "team_id"] = "racing_bulls"
+    assert build_feature_rows(rows, targets).iloc[0].recent_team_qualifying_rank == 0.0
+
+
+@pytest.mark.parametrize("missing_team", [None, "None", " nan ", "NULL", ""])
+def test_missing_team_identity_never_pools_unknown_teams_or_infers_affiliation(missing_team):
+    rows = pd.DataFrame([
+        _row("2025-01", "Q", "a", "2025-03-01T09:00Z", "2025-03-01T10:00Z",
+             team_id=missing_team, position=1),
+        _row("2025-01", "Q", "b", "2025-03-01T09:00Z", "2025-03-01T10:00Z",
+             team_id="blue", position=2),
+        _row("2024-01", "R", "a", "2024-03-01T09:00Z", "2024-03-01T10:00Z",
+             team_id="red", position=1),
+        _row("2025-02", "Q", "a", "2025-04-12T12:00Z", "2025-04-12T13:00Z",
+             team_id="red", position=1),
+    ])
+    targets = _target()
+    targets.loc[0, "team_id"] = missing_team
+    got = build_feature_rows(rows, targets).set_index("driver_id")
+    assert pd.isna(got.loc["a", "team_id"])
+    assert pd.isna(got.loc["a", "recent_team_qualifying_rank"])
+    assert pd.isna(got.loc["a", "recent_team_race_rank"])
+    assert "missing-team-form" in missing_feature_groups(got, "qualifying")
+
+
 def test_prospective_features_exclude_late_feed_and_target_result():
     rows = [
         _row("2024-01", "Q", "a", "2024-03-01T09:00Z", "2024-03-01T10:00Z", position=1),

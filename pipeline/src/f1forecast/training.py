@@ -26,7 +26,7 @@ from f1forecast.evaluation import (
     promotion_decision,
 )
 from f1forecast.features import NUMERIC_FEATURES, completed_session_rows, missing_feature_groups
-from f1forecast.modeling import fit_ranker, predict_scores
+from f1forecast.modeling import fit_ranker, predict_scores, score_explanations
 from f1forecast.probabilities import OrderSamples, fit_temperature, sample_orders
 
 
@@ -167,22 +167,53 @@ def attach_results(feature_rows: pd.DataFrame, summaries: pd.DataFrame) -> pd.Da
     if missing := needed - set(summaries.columns):
         raise ValueError(f"result summaries missing {sorted(missing)}")
     summaries = completed_session_rows(summaries)
+    session_times = summaries[["session_id", "session_end"]]
+    if (
+        session_times.assign(session_end=_time(session_times["session_end"]))
+        .groupby("session_id")["session_end"]
+        .nunique(dropna=False)
+        .gt(1)
+        .any()
+    ):
+        raise ValueError("finalized session rows must share session end")
+    session_end = session_times.drop_duplicates("session_id").set_index("session_id")["session_end"]
     race_rows = summaries.loc[
         summaries["session_type"].eq("R")
         & pd.to_numeric(summaries["position"], errors="coerce").notna()
     ]
     weekend_end = race_rows.groupby("event_id")["session_end"].max().rename("weekend_complete_at")
-    labels = summaries[["session_id", "driver_id", "session_end", "position", "status"]].rename(
-        columns={
-            "session_id": "target_session_id",
-            "session_end": "target_session_end",
-        }
+    labels = summaries[["session_id", "driver_id", "position", "status"]].rename(
+        columns={"session_id": "target_session_id"}
     )
     if labels.duplicated(["target_session_id", "driver_id"]).any():
         raise ValueError("duplicate target classifications")
+    actual_rosters = labels.groupby("target_session_id")["driver_id"].agg(
+        lambda values: set(values.astype(str))
+    )
+    predicted_rosters = feature_rows.groupby("target_session_id")["driver_id"].agg(
+        lambda values: set(values.astype(str))
+    )
+    unexpected_entrants = {
+        session: tuple(sorted(actual_rosters.get(session, set()) - predicted))
+        for session, predicted in predicted_rosters.items()
+    }
     result = feature_rows.drop(
-        columns=["position", "status", "target_session_end", "weekend_complete_at"], errors="ignore"
+        columns=[
+            "position",
+            "status",
+            "target_session_end",
+            "weekend_complete_at",
+            "unexpected_actual_entrants",
+            "actual_field_count",
+        ],
+        errors="ignore",
     ).merge(labels, on=["target_session_id", "driver_id"], how="left", validate="one_to_one")
+    # Completion belongs to the session even when an eligible entrant has no
+    # classification. Keep that entrant's label missing for honest exclusions.
+    result["target_session_end"] = result["target_session_id"].map(session_end)
+    # This label-side coverage is never used to add entrants or build features.
+    result["unexpected_actual_entrants"] = result["target_session_id"].map(unexpected_entrants)
+    result["actual_field_count"] = result["target_session_id"].map(actual_rosters.map(len))
     return result.join(weekend_end, on="event_id")
 
 
@@ -202,6 +233,7 @@ def _complete_events(rows: pd.DataFrame) -> pd.DataFrame:
         if (
             weekend_known
             and len(group) >= 2
+            and not _used_ids(group, "unexpected_actual_entrants")
             and not invalid.any()
             and positions.notna().all()
             and set(positions) == set(range(1, len(group) + 1))
@@ -239,7 +271,9 @@ def _baseline_names(target: str) -> tuple[str, ...]:
 def _baseline_oof(rows: pd.DataFrame, target: str, name: str) -> pd.DataFrame:
     records = []
     for _, group in _event_groups(rows.loc[rows["season"].between(2022, 2024)], target):
-        if _complete_events(group).empty:
+        if _complete_events(group).empty or _required_input_error(
+            group, target, missing_feature_groups(group, target)
+        ):
             continue
         frame = group[["event_id", "driver_id", "position"]].copy()
         frame["event_end"] = group["weekend_complete_at"].iloc[0]
@@ -345,7 +379,11 @@ def _oof_for_calibration(
             & rows["season"].between(2022, 2024)
         ]
         earlier = _complete_events(earlier)
-        if earlier["event_id"].nunique() < min_train_events or not _complete_events(held).shape[0]:
+        if (
+            earlier["event_id"].nunique() < min_train_events
+            or not _complete_events(held).shape[0]
+            or _required_input_error(held, target, missing_feature_groups(held, target))
+        ):
             continue
         validate_training_rows(earlier, held["cutoff"].min())
         model = fit_ranker(earlier, iterations=iterations, random_seed=seed)
@@ -422,7 +460,7 @@ def _used_ids(held: pd.DataFrame, column: str) -> list[str]:
         {
             str(item)
             for used in held[column]
-            if isinstance(used, (tuple, list))
+            if isinstance(used, (tuple, list, np.ndarray))
             for item in used
             if item is not None and not pd.isna(item)
         }
@@ -448,7 +486,41 @@ def _evaluate_completed_weekend(
             None,
             [],
         )
-    return evaluate_event(samples, actual, statuses=statuses)
+    evaluation = evaluate_event(samples, actual, statuses=statuses)
+    unexpected = _used_ids(held, "unexpected_actual_entrants")
+    target = str(held["target"].iloc[0])
+    input_error = _required_input_error(held, target, missing_feature_groups(held, target))
+    if unexpected or input_error:
+        return EventEvaluation(
+            False,
+            {
+                **evaluation.excluded_drivers,
+                **{
+                    driver: "actual entrant absent from pre-session roster" for driver in unexpected
+                },
+                **({driver: input_error for driver in samples.driver_ids} if input_error else {}),
+            },
+            None,
+            None,
+            None,
+            None,
+            None,
+            [],
+        )
+    return evaluation
+
+
+def _required_input_error(
+    held: pd.DataFrame, target: str, missing_pattern: list[str]
+) -> str | None:
+    """Apply live required-input rules; optional-case approval is a later gate."""
+    from f1forecast.operations import validate_inputs
+
+    try:
+        validate_inputs(held, target, [missing_pattern])
+    except ValueError as error:
+        return str(error)
+    return None
 
 
 def walk_forward_backtest(
@@ -517,6 +589,7 @@ def walk_forward_backtest(
         }
         status = {str(row["driver_id"]): str(row.get("status", "")) for _, row in held.iterrows()}
         missing_pattern = missing_feature_groups(held, target)
+        required_input_error = _required_input_error(held, target, missing_pattern)
         training_events = sorted(str(value) for value in earlier["event_id"].unique())
         latest_complete = _time(earlier["weekend_complete_at"]).max()
         learned_forecast = None
@@ -536,6 +609,15 @@ def walk_forward_backtest(
             )
             learned_eval = _evaluate_completed_weekend(learned_samples, actual, status, held)
             learned_forecast = _forecast_distribution(learned_samples)
+            method, contributions = score_explanations(model, held)
+            learned_forecast["explanation_method"] = method
+            learned_forecast["explanations"] = {
+                str(driver): [
+                    {"group": group["group"], "contribution": group["score_contribution"]}
+                    for group in groups
+                ]
+                for driver, groups in zip(held["driver_id"], contributions, strict=True)
+            }
             training_hash = input_dataset_sha256(earlier)
             model_version = _fold_version(
                 training_hash, target, cutoff, training_events, iterations, min_train_events, seed
@@ -563,6 +645,17 @@ def walk_forward_backtest(
             n_samples=n_samples,
         )
         baseline_eval = _evaluate_completed_weekend(baseline_samples, actual, status, held)
+        baseline_forecast = _forecast_distribution(baseline_samples)
+        baseline_forecast["explanation_method"] = "baseline ranking score"
+        baseline_forecast["explanations"] = {
+            str(driver): [{
+                "group": f"{baseline_name.replace('_', ' ')} baseline score",
+                "contribution": float(score),
+            }]
+            for driver, score in zip(
+                baseline_samples.driver_ids, baseline_samples.scores, strict=True
+            )
+        }
         by_period[period]["baseline"].append(baseline_eval)
         case = case_results.setdefault(
             tuple(missing_pattern),
@@ -615,10 +708,25 @@ def walk_forward_backtest(
                 "calibration_oof_events": calibration_events,
                 "baseline_name": baseline_name,
                 "baseline_temperature": baseline_temp,
-                "baseline_forecast": _forecast_distribution(baseline_samples),
+                "baseline_forecast": baseline_forecast,
                 "learned_forecast": learned_forecast,
                 "missing_pattern": missing_pattern,
+                "required_inputs_available": required_input_error is None,
+                "required_input_unavailability_reason": required_input_error,
+                "unexpected_actual_entrants": _used_ids(held, "unexpected_actual_entrants"),
+                "predicted_field_count": len(held),
+                "actual_field_count": int(held["actual_field_count"].iloc[0])
+                if "actual_field_count" in held and pd.notna(held["actual_field_count"].iloc[0])
+                else None,
                 "full_order": baseline_eval.full_order,
+                "evaluation_exclusion_reason": None
+                if baseline_eval.full_order
+                else required_input_error
+                or (
+                    "actual entrants absent from pre-session roster"
+                    if _used_ids(held, "unexpected_actual_entrants")
+                    else "incomplete classification or Grand Prix weekend"
+                ),
                 "excluded_drivers": baseline_eval.excluded_drivers,
                 "baseline": _event_metrics(baseline_eval),
                 "learned": _event_metrics(learned_eval) if learned_eval is not None else None,
@@ -668,6 +776,7 @@ def walk_forward_backtest(
             }
         )
     return {
+        "evaluation_schema_version": "2",
         "target": target,
         "input_dataset_sha256": dataset_hash,
         "events": records,

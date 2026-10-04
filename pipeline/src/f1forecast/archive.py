@@ -47,6 +47,24 @@ def latest_snapshot(
     return manifest, summary, tables
 
 
+def index_published_snapshot(archive_dir: Path | str, snapshot_id: str) -> None:
+    """Idempotently register immutable files after an interrupted catalog write."""
+    root = Path(archive_dir)
+    if Path(snapshot_id).name != snapshot_id:
+        raise ValueError("invalid snapshot directory name")
+    directory = root / "snapshots" / snapshot_id
+    manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    if manifest.get("snapshot_id") != snapshot_id or not (directory / "summary.parquet").is_file():
+        raise ValueError("snapshot is not completely published")
+    with _connect(root) as conn:
+        conn.execute(
+            "INSERT INTO snapshots VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+            [snapshot_id, manifest["session_id"], manifest["retrieved_at"],
+             str(directory.relative_to(root)), manifest["source"],
+             json.dumps(manifest["coverage"], sort_keys=True)],
+        )
+
+
 def write_snapshot(
     archive_dir: Path | str,
     manifest: dict,
@@ -64,6 +82,7 @@ def write_snapshot(
         stored = json.loads((final / "manifest.json").read_text(encoding="utf-8"))
         if stored != result:
             raise ValueError("snapshot identity already exists with different metadata")
+        index_published_snapshot(root, snapshot_id)
         return stored
     staging = root / "snapshots" / f".{snapshot_id}.staging"
     staging.parent.mkdir(parents=True, exist_ok=True)
@@ -80,34 +99,40 @@ def write_snapshot(
             json.dumps(result, indent=2, sort_keys=True, default=str), encoding="utf-8"
         )
         staging.replace(final)
-        with _connect(root) as conn:
-            conn.execute(
-                "INSERT INTO snapshots VALUES (?, ?, ?, ?, ?, ?)",
-                [
-                    snapshot_id,
-                    manifest["session_id"],
-                    manifest["retrieved_at"],
-                    str(final.relative_to(root)),
-                    manifest["source"],
-                    json.dumps(manifest["coverage"], sort_keys=True),
-                ],
-            )
+        index_published_snapshot(root, snapshot_id)
         return result
     finally:
         if staging.exists():
             shutil.rmtree(staging)
 
 
-def load_summaries(archive_dir: Path | str) -> pd.DataFrame:
+def load_summaries(archive_dir: Path | str, *, use_catalog: bool = True) -> pd.DataFrame:
     """Load the latest immutable snapshot per session, with timestamps intact."""
     root = Path(archive_dir)
-    if not (root / "catalog.duckdb").exists():
-        return pd.DataFrame()
-    with _connect(root) as conn:
-        rows = conn.execute("""SELECT relative_path FROM (
-            SELECT relative_path, ROW_NUMBER() OVER
-              (PARTITION BY session_id ORDER BY retrieved_at DESC) AS rn
-            FROM snapshots) WHERE rn = 1""").fetchall()
+    if use_catalog:
+        if not (root / "catalog.duckdb").exists():
+            return pd.DataFrame()
+        with _connect(root) as conn:
+            rows = conn.execute("""SELECT relative_path FROM (
+                SELECT relative_path, ROW_NUMBER() OVER
+                  (PARTITION BY session_id ORDER BY retrieved_at DESC) AS rn
+                FROM snapshots) WHERE rn = 1""").fetchall()
+    else:
+        latest = {}
+        for file in (root / "snapshots").glob("*/manifest.json"):
+            if file.parent.name.startswith("."):
+                continue
+            manifest = json.loads(file.read_text(encoding="utf-8"))
+            if manifest.get("snapshot_id") != file.parent.name:
+                continue
+            key = manifest["session_id"]
+            stamp = pd.Timestamp(manifest["retrieved_at"])
+            if key not in latest or (stamp, file.parent.name) > (
+                latest[key][0],
+                latest[key][1].name,
+            ):
+                latest[key] = (stamp, file.parent)
+        rows = [(str(latest[key][1].relative_to(root)),) for key in sorted(latest)]
     if not rows:
         return pd.DataFrame()
     frames = []
@@ -136,7 +161,10 @@ def load_event_snapshots(
                 continue
             manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
             session_id = str(manifest.get("session_id", ""))
-            if not session_id.startswith(f"{event_id}-") or manifest.get("snapshot_id") != path.name:
+            if (
+                not session_id.startswith(f"{event_id}-")
+                or manifest.get("snapshot_id") != path.name
+            ):
                 continue
             retrieved = pd.Timestamp(manifest["retrieved_at"])
             if not isinstance(retrieved, pd.Timestamp):

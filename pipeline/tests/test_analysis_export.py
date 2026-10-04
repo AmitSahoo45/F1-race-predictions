@@ -24,6 +24,7 @@ def source_session(kind: str) -> RawSession:
                 "LapStartTime": np.timedelta64(lap * 2, "m"),
                 "Compound": "MEDIUM",
                 "TyreLife": lap,
+                "Stint": 1,
                 "IsAccurate": True,
                 "Deleted": False,
             }
@@ -97,6 +98,48 @@ def test_export_analysis_uses_real_archive_tables_and_retains_dsq(tmp_path):
 def test_export_analysis_rejects_absent_event(tmp_path):
     with pytest.raises(ValueError, match="no archived"):
         export_analysis("2025-99", tmp_path)
+
+
+@pytest.mark.parametrize("missing", ["column", "values"])
+def test_export_analysis_does_not_invent_stints_without_source_boundaries(tmp_path, missing):
+    class Provider:
+        def fetch_session(self, _year, _event, kind):
+            raw = source_session(kind)
+            if missing == "column":
+                raw.laps = raw.laps.drop(columns="Stint")
+            else:
+                raw.laps["Stint"] = float("nan")
+            return raw
+
+    ingest_session(2025, 1, "FP1", tmp_path, fastf1_provider=Provider(), retrieved_at=NOW)
+    assert export_analysis("2025-01", tmp_path).drivers[0].stints == []
+
+
+def test_export_analysis_keeps_separate_same_compound_source_stints(tmp_path):
+    class Provider:
+        def fetch_session(self, _year, _event, kind):
+            raw = source_session(kind)
+            raw.laps["Stint"] = [1, 2, 2]
+            return raw
+
+    ingest_session(2025, 1, "FP1", tmp_path, fastf1_provider=Provider(), retrieved_at=NOW)
+    stints = export_analysis("2025-01", tmp_path).drivers[0].stints
+    assert [(stint.laps, stint.pace_s) for stint in stints] == [(1, 91.0), (2, 92.5)]
+
+
+def test_export_analysis_attributes_actual_bulk_and_classification_sources(tmp_path):
+    class Provider:
+        def fetch_session(self, _year, _event, kind):
+            raw = source_session(kind)
+            raw.source = "TracingInsights/2025@abc123"
+            raw.source_labels["results"] = "Jolpica official classification"
+            return raw
+
+    ingest_session(2025, 1, "Q", tmp_path, fastf1_provider=Provider(), retrieved_at=NOW)
+    analysis = export_analysis("2025-01", tmp_path)
+    assert "TracingInsights/2025@abc123" in analysis.source
+    assert "Jolpica official classification" in analysis.source
+    assert "FastF1 public" not in analysis.source
 
 
 def test_export_analysis_omits_partial_race_classification(tmp_path):

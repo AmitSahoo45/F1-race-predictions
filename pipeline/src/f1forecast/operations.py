@@ -13,6 +13,7 @@ from catboost import CatBoostRanker
 from .archive import load_summaries
 from .contracts import Event, Forecast, SiteData, TargetState
 from .features import build_feature_rows, completed_session_rows, missing_feature_groups
+from .identity import canonical_team_id
 from .modeling import predict_scores, score_explanations
 from .probabilities import sample_orders
 from .publication import publish_forecast, publish_site, verify_archive
@@ -22,18 +23,35 @@ RESULT_RETRY_WINDOW = timedelta(days=7)
 
 
 def eligible_summary_versions(summaries: pd.DataFrame, cutoff: datetime) -> pd.DataFrame:
-    """Resolve corrections only after excluding unavailable/incomplete snapshots."""
+    """Select whole eligible snapshots so revisions cannot leave phantom entrants."""
     if summaries.empty:
         return summaries
     eligible = completed_session_rows(summaries).copy()
     eligible["available_at"] = pd.to_datetime(eligible.available_at, utc=True)
     eligible = eligible.loc[eligible.available_at.le(cutoff)]
+    if "source_snapshot_id" in eligible:
+        identified = eligible.loc[
+            eligible["source_snapshot_id"].map(lambda value: isinstance(value, str) and bool(value))
+        ]
+        latest = (
+            identified.sort_values(["available_at", "source_snapshot_id"])
+            .drop_duplicates("session_id", keep="last")[["session_id", "source_snapshot_id"]]
+        )
+        selected = identified.merge(
+            latest, on=["session_id", "source_snapshot_id"], how="inner", validate="many_to_one"
+        )
+        # Legacy caller frames have no immutable snapshot identifier. Retain
+        # their row-based behavior only for sessions with no identified version.
+        legacy = eligible.loc[~eligible["session_id"].isin(latest["session_id"])]
+        eligible = pd.concat([selected, legacy], ignore_index=True)
     return eligible.sort_values("available_at").drop_duplicates(
         ["session_id", "driver_id"], keep="last"
     )
 
 
-def result_reconciliation_due(site: SiteData, event: Event, target: TargetState, now: datetime) -> bool:
+def result_reconciliation_due(
+    site: SiteData, event: Event, target: TargetState, now: datetime
+) -> bool:
     if target.state != "issued" or not target.forecast_id:
         return False
     session = next(s for s in event.sessions if s.id == target.session_id)
@@ -74,7 +92,7 @@ def target_rows(event: Event, target: str) -> pd.DataFrame:
                 "season": event.season,
                 "circuit_id": event.circuit,
                 "driver_id": d.id,
-                "team_id": d.team.lower().replace(" ", "_"),
+                "team_id": canonical_team_id(d.team, event.season),
                 "target": target,
                 "target_session_id": state.session_id,
                 "cutoff": state.cutoff_at,

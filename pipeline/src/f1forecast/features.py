@@ -11,6 +11,9 @@ from collections.abc import Iterable
 import numpy as np
 import pandas as pd
 
+from .identity import canonical_team_id
+from .lap_summaries import COMPOUND_FEATURES
+
 SESSION_COLUMNS = (
     "event_id",
     "season",
@@ -49,6 +52,7 @@ NUMERIC_FEATURES = (
     "consistency_s",
     "usable_laps",
     "tyre_age",
+    *COMPOUND_FEATURES,
     "mean_speed",
     "mean_throttle",
     "brake_fraction",
@@ -74,6 +78,7 @@ MISSING_GROUP_BY_FEATURE = {
     "consistency_s": "missing-stint-consistency",
     "usable_laps": "missing-practice-coverage",
     "tyre_age": "missing-tyre-context",
+    **dict.fromkeys(COMPOUND_FEATURES, "missing-tyre-context"),
     "mean_speed": "missing-telemetry",
     "mean_throttle": "missing-telemetry",
     "brake_fraction": "missing-telemetry",
@@ -202,6 +207,20 @@ def _practice_features(eligible: pd.DataFrame, driver: str) -> dict[str, float |
     result["usable_laps"] = float(
         pd.to_numeric(own["usable_laps"], errors="coerce").sum(min_count=1)
     )
+    # Compound mix describes all usable practice laps, not the average of
+    # differently sized sessions. Unknown source compounds stay unavailable.
+    weights = pd.to_numeric(own["usable_laps"], errors="coerce")
+    contributing = own.loc[weights.gt(0), list(COMPOUND_FEATURES)].apply(
+        pd.to_numeric, errors="coerce"
+    )
+    compound_known = (
+        weights.notna().all() and not contributing.empty and contributing.notna().all().all()
+    )
+    for name in COMPOUND_FEATURES:
+        result[name] = (
+            float(contributing[name].mul(weights).sum() / weights.sum())
+            if compound_known else float("nan")
+        )
     return result
 
 
@@ -246,6 +265,10 @@ def build_feature_rows(
     for name in SESSION_COLUMNS:
         if name not in src:
             src[name] = pd.Series(dtype="object")
+    src["team_id"] = [
+        canonical_team_id(team, int(season))
+        for team, season in zip(src["team_id"], src["season"], strict=True)
+    ]
     for name in ("session_end", "observed_at", "available_at"):
         if name not in src:
             src[name] = pd.Series(dtype="datetime64[ns, UTC]")
@@ -257,6 +280,7 @@ def build_feature_rows(
         "consistency_s",
         "usable_laps",
         "tyre_age",
+        *COMPOUND_FEATURES,
         "mean_speed",
         "mean_throttle",
         "brake_fraction",
@@ -270,6 +294,10 @@ def build_feature_rows(
         src["mean_throttle"] = src["throttle"]
     src["position"] = pd.to_numeric(src["position"], errors="coerce")
     target_rows = targets.copy()
+    target_rows["team_id"] = [
+        canonical_team_id(team, int(season))
+        for team, season in zip(target_rows["team_id"], target_rows["season"], strict=True)
+    ]
     target_rows["cutoff"] = _utc(target_rows["cutoff"])
     if target_rows["cutoff"].isna().any():
         raise ValueError("invalid target cutoff")
@@ -305,12 +333,12 @@ def build_feature_rows(
         latest = used["session_end"].max() if not used.empty else pd.NaT
         for item in entrants.to_dict("records"):
             driver = str(item["driver_id"])
-            team = str(item["team_id"])
+            team = item["team_id"]
             circuit = str(item["circuit_id"])
             q_rank, q_count = _recent_rank(past, "Q", driver=driver)
             r_rank, r_count = _recent_rank(past, "R", driver=driver)
-            team_q, _ = _recent_rank(past, "Q", team=team)
-            team_r, _ = _recent_rank(past, "R", team=team)
+            team_q = _recent_rank(past, "Q", team=team)[0] if team is not None else np.nan
+            team_r = _recent_rank(past, "R", team=team)[0] if team is not None else np.nan
             circuit_q, circuit_q_count = _recent_rank(past, "Q", driver=driver, circuit=circuit)
             circuit_r, circuit_r_count = _recent_rank(past, "R", driver=driver, circuit=circuit)
             own_q = (

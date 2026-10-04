@@ -3,6 +3,7 @@
 import json
 import os
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import httpx
 import numpy as np
@@ -19,6 +20,38 @@ from f1forecast.providers import (
 )
 
 NOW = datetime(2026, 9, 26, 12, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("placeholder", [None, "None", " nan ", "NULL", ""])
+def test_team_placeholder_laps_use_same_session_result_identity(placeholder):
+    raw = raw_session()
+    raw.laps["Team"] = placeholder
+    raw.results["TeamName"] = "RB F1 Team"
+    summary, tables, coverage = normalize_session(raw, NOW)
+    assert summary.team_id.tolist() == ["racing_bulls"]
+    assert coverage["missing_team_drivers"] == []
+    assert tables["results"].TeamName.tolist() == ["RB F1 Team"]
+    pd.testing.assert_series_equal(tables["laps"].Team, raw.laps.Team)
+
+
+def test_missing_team_identity_is_explicit_and_keeps_zero_lap_entrant():
+    raw = raw_session()
+    raw.laps["Team"] = "None"
+    raw.results["TeamName"] = None
+    raw.results.loc[1] = {"Abbreviation": "RES", "DriverNumber": "99", "TeamName": None}
+    summary, _, coverage = normalize_session(raw, NOW)
+    assert set(summary.driver_code) == {"NOR", "RES"}
+    assert summary.team_id.isna().all()
+    assert coverage["missing_team_drivers"] == ["NOR", "RES"]
+    assert coverage["complete"] is False
+
+
+def test_team_alias_normalization_preserves_2024_rb_identity():
+    raw = raw_session()
+    raw.season = 2024
+    raw.laps["Team"] = "RB"
+    summary, _, _ = normalize_session(raw, NOW)
+    assert summary.team_id.tolist() == ["rb"]
 
 
 def test_fastest_lap_trace_preserves_car_channels_and_source_positions():
@@ -144,6 +177,12 @@ def test_fastf1_same_practice_driver_list_keeps_zero_lap_entrant(tmp_path, monke
     }
     calls = []
     monkeypatch.setattr("fastf1.get_session", lambda *_args: Session())
+    monkeypatch.setattr(
+        "fastf1.get_event_schedule",
+        lambda _year, **_kwargs: SimpleNamespace(
+            get_event_by_round=lambda _round: SimpleNamespace(get_session=lambda _kind: Session())
+        ),
+    )
     monkeypatch.setattr("fastf1.Cache.enable_cache", lambda *_args: None)
     monkeypatch.setattr(
         "fastf1._api.driver_info", lambda path: calls.append(path) or source
@@ -174,7 +213,7 @@ def test_fastf1_driver_list_reuses_one_schedule_lookup_per_year(tmp_path, monkey
 
     schedule_calls = []
     monkeypatch.setattr(
-        "fastf1.get_event_schedule", lambda year: schedule_calls.append(year) or Schedule()
+        "fastf1.get_event_schedule", lambda year, **_kwargs: schedule_calls.append(year) or Schedule()
     )
     monkeypatch.setattr("fastf1.get_session", lambda *_args: Session())
     monkeypatch.setattr("fastf1.Cache.enable_cache", lambda *_args: None)
@@ -186,6 +225,33 @@ def test_fastf1_driver_list_reuses_one_schedule_lookup_per_year(tmp_path, monkey
     provider.fetch_driver_list(2031, 1, "FP1")
     provider.fetch_driver_list(2031, 1, "FP2")
     assert schedule_calls == [2031]
+
+
+def test_fastf1_schedule_uses_utc_session_date_and_records_source_hash(tmp_path, monkeypatch):
+    class Event:
+        def get_session_date(self, kind, *, utc):
+            assert (kind, utc) == ("R", True)
+            return pd.Timestamp("2024-11-24T06:00:00")
+
+        def to_dict(self):
+            return {"RoundNumber": 22, "Session5DateUtc": pd.Timestamp("2024-11-24T06:00:00")}
+
+    class Schedule:
+        def get_event_by_round(self, round_number):
+            assert round_number == 22
+            return Event()
+
+    def schedule(year, *, backend=None):
+        assert backend == "fastf1"  # Provenance names this backend's JSON URL.
+        return Schedule()
+
+    monkeypatch.setattr("fastf1.get_event_schedule", schedule)
+    monkeypatch.setattr("fastf1.Cache.enable_cache", lambda *_args: None)
+    start, source = FastF1Provider(tmp_path).fetch_schedule(2024, 22, "R")
+    assert start == pd.Timestamp("2024-11-24T06:00:00Z")
+    assert source["url"].endswith("/schedule_2024.json")
+    assert len(source["sha256"]) == 64
+    assert source["digest_basis"] == "canonical_event_schedule_row"
 
 
 def test_alternate_source_file_hashes_and_completion_evidence_are_archived(tmp_path):
@@ -441,6 +507,96 @@ def test_normalization_rejects_duplicate_lap_identity():
         normalize_session(raw_session(duplicate=True), NOW)
 
 
+@pytest.mark.parametrize("accurate", [False, True])
+def test_interrupted_race_lap_is_preserved_but_excluded_from_pace(accurate):
+    # Pinned 2022 Monaco race: ALB lap 29 lasted 1297.333 s (IsAccurate=False).
+    raw = raw_session()
+    raw.session_type = "R"
+    raw.laps["LapTime"] = pd.to_timedelta([90.0, 1297.333], unit="s")
+    raw.laps.loc[1, "IsAccurate"] = accurate
+    summary, tables, coverage = normalize_session(raw, NOW)
+    assert tables["laps"]["lap_seconds"].tolist() == [90.0, 1297.333]
+    assert tables["laps"]["usable"].tolist() == [True, False]
+    assert summary.iloc[0]["pace_s"] == 90.0
+    assert summary.iloc[0]["usable_laps"] == 1
+    assert coverage["out_of_pace_range_laps"] == 1
+
+
+@pytest.mark.parametrize("seconds", [-1, 86400])
+def test_invalid_lap_duration_still_rejects_source_units(seconds):
+    raw = raw_session()
+    raw.laps["LapTime"] = pd.to_timedelta([90, seconds], unit="s")
+    with pytest.raises(ValueError, match="lap time seconds") as error:
+        normalize_session(raw, NOW)
+    assert type(error.value).__name__ == "SourceValidationError"
+
+
+def test_duplicate_lap_timestamp_is_an_expected_source_failure():
+    raw = raw_session()
+    raw.laps.loc[1, "LapStartTime"] = raw.laps.loc[0, "LapStartTime"]
+    with pytest.raises(ValueError, match="duplicate lap timestamp") as error:
+        normalize_session(raw, NOW)
+    assert type(error.value).__name__ == "SourceValidationError"
+
+
+def test_inaccurate_zero_timestamp_placeholders_are_retained_and_excluded():
+    # Pinned Spain 2025 FP3 repeats zero LapStartTime only on inaccurate source rows.
+    raw = raw_session()
+    extra = raw.laps.iloc[[1]].copy()
+    extra["LapNumber"] = 3
+    raw.laps = pd.DataFrame([*raw.laps.to_dict("records"), *extra.to_dict("records")])
+    raw.laps["LapStartTime"] = pd.to_timedelta([300, 0, 0], unit="s")
+    raw.laps["IsAccurate"] = [True, False, False]
+    summary, tables, coverage = normalize_session(raw, NOW)
+    assert summary.iloc[0]["pace_s"] == 90.0
+    assert tables["laps"]["LapStartTime"].dt.total_seconds().tolist() == [300, 0, 0]
+    assert tables["laps"]["usable"].tolist() == [True, False, False]
+    assert coverage["invalid_lap_timestamp_rows"] == 2
+
+
+def test_corrupt_driver_trace_is_preserved_separately_without_losing_valid_session(tmp_path):
+    raw = raw_session()
+    raw.laps = pd.DataFrame([
+        *raw.laps.to_dict("records"),
+        *raw.laps.assign(Driver="PIA", DriverNumber="81").to_dict("records"),
+    ])
+    raw.telemetry["PIA"] = raw.telemetry["NOR"].copy()
+    # Pinned Belgium 2026 FP2 GAS lap 12 has distances down to -4209.187 m.
+    raw.telemetry["NOR"].loc[0, "Distance"] = -4209.187175981231
+    summary, tables, coverage = normalize_session(raw, NOW)
+    summary = summary.set_index("driver_code")
+    assert pd.isna(summary.loc["NOR", "mean_speed"])
+    assert summary.loc["PIA", "mean_speed"] == 225.0
+    assert set(tables["telemetry"]["driver_id"]) == {"pia"}
+    assert tables["rejected_telemetry"]["Distance"].tolist() == [-4209.187175981231, 100.0]
+    assert set(tables["rejected_telemetry"]["driver_code"]) == {"NOR"}
+    assert coverage["missing_telemetry_drivers"] == ["NOR"]
+    assert "distance metres" in coverage["rejected_telemetry_drivers"]["NOR"]
+    assert coverage["session_complete"]
+    assert not coverage["complete"]
+    manifest = write_snapshot(
+        tmp_path, {"session_id": "2025-01-FP1", "source": "FastF1",
+                   "retrieved_at": NOW.isoformat(), "coverage": coverage},
+        summary.reset_index(), tables,
+    )
+    preserved = pd.read_parquet(
+        tmp_path / "snapshots" / manifest["snapshot_id"] / "rejected_telemetry.parquet"
+    )
+    assert preserved["Distance"].tolist() == [-4209.187175981231, 100.0]
+
+
+def test_fastf1_pacing_uses_injected_deadline_sleep(tmp_path):
+    budget = tmp_path / ".fastf1-pacing.json"
+    budget.write_text(
+        json.dumps({"last_fetch_start_utc": datetime.now(UTC).isoformat()}), encoding="utf-8"
+    )
+    sleeps = []
+    provider = FastF1Provider(tmp_path, sleep=sleeps.append)
+    provider._pace_fetch()
+    assert len(sleeps) == 1
+    assert 89 <= sleeps[0] <= 90
+
+
 def test_normalization_uses_telemetry_units_and_real_geometry():
     summary, tables, coverage = normalize_session(raw_session(), NOW)
     row = summary.iloc[0]
@@ -450,6 +606,43 @@ def test_normalization_uses_telemetry_units_and_real_geometry():
     assert tables["telemetry"]["speed_kph"].tolist() == [200.0, 250.0]
     assert tables["circuit"]["x"].tolist() == [1.0, 2.0]
     assert coverage["missing_telemetry_drivers"] == []
+
+
+def test_unresolved_identity_preserves_trace_without_attaching_it_to_a_driver(tmp_path):
+    raw = raw_session()
+    raw.driver_ids = {"NOR": None, "PIA": "piastri"}
+    raw.laps = pd.DataFrame([
+        *raw.laps.to_dict("records"),
+        *raw.laps.assign(Driver="PIA", DriverNumber="81").to_dict("records"),
+    ])
+    raw.telemetry["PIA"] = raw.telemetry["NOR"].copy()
+
+    summary, tables, coverage = normalize_session(raw, NOW)
+    by_code = summary.set_index("driver_code")
+    assert pd.isna(by_code.loc["NOR", "driver_id"])
+    assert pd.isna(by_code.loc["NOR", "mean_speed"])
+    assert by_code.loc["NOR", "pace_s"] == 90.5
+    assert by_code.loc["PIA", "driver_id"] == "piastri"
+    assert by_code.loc["PIA", "mean_speed"] == 225.0
+    assert set(tables["telemetry"]["driver_id"]) == {"piastri"}
+    assert set(tables["rejected_telemetry"]["driver_code"]) == {"NOR"}
+    assert tables["rejected_telemetry"]["Speed"].tolist() == [200.0, 250.0]
+    assert coverage["missing_telemetry_drivers"] == ["NOR"]
+    assert "identity" in coverage["rejected_telemetry_drivers"]["NOR"]
+    assert not coverage["complete"]
+
+    manifest = write_snapshot(
+        tmp_path,
+        {"session_id": "2025-01-FP1", "source": "FastF1",
+         "retrieved_at": NOW.isoformat(), "coverage": coverage},
+        summary,
+        tables,
+    )
+    preserved = pd.read_parquet(
+        tmp_path / "snapshots" / manifest["snapshot_id"] / "rejected_telemetry.parquet"
+    )
+    assert preserved["Speed"].tolist() == [200.0, 250.0]
+    assert preserved["driver_code"].tolist() == ["NOR", "NOR"]
 
 
 def test_normalization_clamps_submetre_fastf1_distance_interpolation():

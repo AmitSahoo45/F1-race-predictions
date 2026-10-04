@@ -10,7 +10,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
+import pandas as pd
+
 from .calendar import event_from_race
+from .identity import canonical_team_id
 from .providers import JolpicaProvider
 
 
@@ -51,6 +54,28 @@ def _bytes_under(path: Path) -> int:
     return total
 
 
+def _telemetry_intentionally_omitted(manifest: dict) -> bool:
+    """Recognize explicit policy, including older immutable bulk manifests."""
+    kind = manifest.get("session_type") or str(manifest["session_id"]).rsplit("-", 1)[-1]
+    coverage = manifest.get("coverage", {})
+    return kind in {"Q", "R"} and bool(
+        coverage.get("telemetry_omission_reason")
+        or manifest.get("sources", {}).get("telemetry")
+        == "not fetched; target-session telemetry excluded"
+    )
+
+
+def _missing_team_drivers(root: Path, manifest: dict) -> list[str]:
+    """Measure legacy snapshots too; their original coverage predates team checks."""
+    missing = set(manifest.get("coverage", {}).get("missing_team_drivers", []))
+    summary = pd.read_parquet(root / "snapshots" / manifest["snapshot_id"] / "summary.parquet")
+    season = int(manifest.get("season") or str(manifest["session_id"]).split("-", 1)[0])
+    for row in summary.to_dict("records"):
+        if canonical_team_id(row.get("team_id"), season) is None:
+            missing.add(str(row.get("driver_code") or row.get("driver_id") or "unknown"))
+    return sorted(missing)
+
+
 def build_coverage_report(
     archive_dir: Path | str,
     years: Iterable[int],
@@ -88,10 +113,25 @@ def build_coverage_report(
         for session_id in present
         if latest[session_id].get("coverage", {}).get("session_complete", False)
     }
+    omitted_telemetry = {
+        session_id for session_id in present if _telemetry_intentionally_omitted(latest[session_id])
+    }
+    missing_teams = {
+        session_id: drivers
+        for session_id in sorted(present)
+        if (drivers := _missing_team_drivers(root, latest[session_id]))
+    }
     fully_covered = {
         session_id
         for session_id in finalized
-        if latest[session_id].get("coverage", {}).get("complete", False)
+        if session_id not in missing_teams
+        and (
+            latest[session_id].get("coverage", {}).get("complete", False)
+            or (
+                session_id in omitted_telemetry
+                and not latest[session_id].get("coverage", {}).get("missing_results", False)
+            )
+        )
     }
     source_counts = Counter(str(latest[session_id].get("source", "unknown")) for session_id in present)
     per_year: dict[str, dict] = {}
@@ -113,6 +153,9 @@ def build_coverage_report(
         }
 
     coverages = [latest[session_id].get("coverage", {}) for session_id in present]
+    requested_telemetry_coverages = [
+        latest[session_id].get("coverage", {}) for session_id in present - omitted_telemetry
+    ]
     source_file_inventory = [
         {"session_id": session_id, **file}
         for session_id in present
@@ -127,6 +170,13 @@ def build_coverage_report(
         "archived_sessions": len(present),
         "finalized_sessions": len(finalized),
         "fully_covered_sessions": len(fully_covered),
+        "missing_team_driver_sessions": sum(len(drivers) for drivers in missing_teams.values()),
+        "sessions_with_missing_teams": len(missing_teams),
+        "missing_team_drivers_by_session": missing_teams,
+        "coverage_policy": (
+            "Fully covered means finalized with team identities, required classifications and requested "
+            "representative telemetry; explicitly omitted Q/R telemetry is not a source gap."
+        ),
         "missing_session_ids": missing,
         "incomplete_session_ids": incomplete,
         "orphan_archived_session_ids": sorted(
@@ -150,11 +200,34 @@ def build_coverage_report(
             if latest[session_id].get("coverage", {}).get("completion_evidence")
         ).items())),
         "per_year": per_year,
-        "missing_telemetry_driver_sessions": sum(bool(c.get("missing_telemetry_drivers")) for c in coverages),
-        "missing_lap_driver_sessions": sum(bool(c.get("missing_lap_drivers")) for c in coverages),
-        "unmatched_identity_driver_sessions": sum(bool(c.get("unmatched_identity_drivers")) for c in coverages),
+        "missing_telemetry_driver_sessions": sum(
+            len(c.get("missing_telemetry_drivers", [])) for c in requested_telemetry_coverages
+        ),
+        "sessions_with_missing_telemetry": sum(
+            bool(c.get("missing_telemetry_drivers")) for c in requested_telemetry_coverages
+        ),
+        "rejected_telemetry_driver_sessions": sum(
+            len(c.get("rejected_telemetry_drivers", {})) for c in coverages
+        ),
+        "invalid_lap_timestamp_rows": sum(c.get("invalid_lap_timestamp_rows", 0) for c in coverages),
+        "out_of_pace_range_laps": sum(c.get("out_of_pace_range_laps", 0) for c in coverages),
+        "intentional_telemetry_omission_sessions": len(omitted_telemetry),
+        "intentional_telemetry_omission_driver_sessions": sum(
+            len(latest[session_id].get("coverage", {}).get("missing_telemetry_drivers", []))
+            for session_id in omitted_telemetry
+        ),
+        "missing_lap_driver_sessions": sum(len(c.get("missing_lap_drivers", [])) for c in coverages),
+        "sessions_with_missing_laps": sum(bool(c.get("missing_lap_drivers")) for c in coverages),
+        "unmatched_identity_driver_sessions": sum(
+            len(c.get("unmatched_identity_drivers", [])) for c in coverages
+        ),
+        "sessions_with_unmatched_identities": sum(
+            bool(c.get("unmatched_identity_drivers")) for c in coverages
+        ),
         "missing_weather_sessions": sum(not c.get("weather_rows", 0) for c in coverages),
-        "missing_circuit_sessions": sum(not c.get("circuit_points", 0) for c in coverages),
+        "missing_circuit_sessions": sum(
+            not c.get("circuit_points", 0) for c in requested_telemetry_coverages
+        ),
         "missing_result_sessions": sum(bool(c.get("missing_results")) for c in coverages),
         "source_file_records": len(source_file_inventory),
         "pinned_source_file_records": sum(

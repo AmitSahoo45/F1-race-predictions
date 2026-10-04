@@ -196,6 +196,146 @@ def test_results_join_requires_recorded_gp_completion_for_qualifying_training():
     assert pd.isna(before_gp.loc[0, "weekend_complete_at"])
 
 
+@pytest.mark.parametrize("target,session_type", [("qualifying", "Q"), ("race", "R")])
+def test_absent_classification_keeps_session_timing_and_is_excluded(target, session_type):
+    features = pd.DataFrame(
+        [
+            {
+                "event_id": "2024-01",
+                "season": 2024,
+                "target": target,
+                "target_session_id": f"2024-01-{session_type}",
+                "driver_id": driver,
+                "cutoff": "2024-03-02T11:30Z",
+                "source_latest_at": "2024-03-01T10:00Z",
+                "feature_provenance": "reconstructed",
+                "baseline_score": 1 - index / 3,
+                **{name: float(index) for name in NUMERIC_FEATURES},
+            }
+            for index, driver in enumerate(("a", "b", "c"), 1)
+        ]
+    )
+    summaries = pd.DataFrame(
+        [
+            {
+                "event_id": "2024-01",
+                "session_id": f"2024-01-{kind}",
+                "session_type": kind,
+                "driver_id": driver,
+                "session_end": end,
+                "position": position,
+                "status": "Retired" if driver == "b" else "Finished",
+                "session_complete": True,
+            }
+            for kind, end in (("Q", "2024-03-02T13:00Z"), ("R", "2024-03-03T16:00Z"))
+            for position, driver in enumerate(("a", "b"), 1)
+        ]
+    )
+    labelled = attach_results(features, summaries)
+    expected_end = "2024-03-02T13:00Z" if target == "qualifying" else "2024-03-03T16:00Z"
+    assert labelled["target_session_end"].eq(expected_end).all()
+    assert labelled["driver_id"].tolist() == ["a", "b", "c"]
+    assert pd.isna(labelled.loc[2, "position"])
+    assert pd.isna(labelled.loc[2, "status"])
+    assert labelled.loc[1, "status"] == "Retired"
+    event = walk_forward_backtest(labelled, target, n_samples=100)["events"][0]
+    assert not event["full_order"]
+    assert set(event["excluded_drivers"]) == {"c"}
+    assert event["required_inputs_available"]
+    with pytest.raises(ValueError, match="missing classifications"):
+        validate_training_rows(labelled, "2024-04-01T00:00Z")
+
+
+def test_results_join_rejects_conflicting_finalized_session_ends():
+    features = pd.DataFrame(
+        {"event_id": ["2024-01"], "target_session_id": ["2024-01-R"], "driver_id": ["a"]}
+    )
+    summaries = pd.DataFrame(
+        [
+            {
+                "event_id": "2024-01",
+                "session_id": "2024-01-R",
+                "session_type": "R",
+                "driver_id": driver,
+                "session_end": end,
+                "position": position,
+                "status": "Finished",
+            }
+            for driver, position, end in (
+                ("a", 1, "2024-03-03T16:00Z"),
+                ("b", 2, "2024-03-03T17:00Z"),
+            )
+        ]
+    )
+    with pytest.raises(ValueError, match="session end"):
+        attach_results(features, summaries)
+
+
+def test_unpredicted_last_place_entrant_cannot_be_a_complete_training_or_scored_order(tmp_path):
+    features = pd.DataFrame(
+        [
+            {
+                "event_id": "2024-01",
+                "season": 2024,
+                "target": "race",
+                "target_session_id": "2024-01-R",
+                "driver_id": driver,
+                "cutoff": "2024-03-03T13:30Z",
+                "source_latest_at": "2024-03-02T13:00Z",
+                "feature_provenance": "reconstructed",
+                "baseline_score": 1 - index / 2,
+                **{name: float(index) for name in NUMERIC_FEATURES},
+            }
+            for index, driver in enumerate(("a", "b"), 1)
+        ]
+    )
+    actual = pd.DataFrame(
+        [
+            {
+                "event_id": "2024-01",
+                "session_id": "2024-01-R",
+                "session_type": "R",
+                "driver_id": driver,
+                "session_end": "2024-03-03T16:00Z",
+                "position": position,
+                "status": "Retired" if driver == "c" else "Finished",
+            }
+            for position, driver in enumerate(("a", "b", "c"), 1)
+        ]
+    )
+    labelled = attach_results(features, actual)
+    assert labelled["driver_id"].tolist() == ["a", "b"]
+    # Preserve exactly the original forecast field through the CLI data boundary.
+    path = tmp_path / "labelled.parquet"
+    labelled.to_parquet(path, index=False)
+    labelled = pd.read_parquet(path)
+    report = walk_forward_backtest(labelled, "race", iterations=5, n_samples=100)
+    event = report["events"][0]
+    assert not event["full_order"]
+    assert event["unexpected_actual_entrants"] == ["c"]
+    assert event["predicted_field_count"] == 2
+    assert event["actual_field_count"] == 3
+    assert event["required_inputs_available"]
+    assert event["excluded_drivers"] == {"c": "actual entrant absent from pre-session roster"}
+    assert report["periods"]["development_2022_2024"]["baseline"]["evaluated_events"] == 0
+    with pytest.raises(ValueError, match="insufficient complete prior events"):
+        fit_final_model(
+            labelled,
+            "race",
+            training_cutoff="2024-04-01T00:00Z",
+            output_dir=tmp_path / "models",
+            min_train_events=1,
+            iterations=5,
+        )
+    labelled.loc[0, "qualifying_position"] = np.nan
+    unavailable = walk_forward_backtest(labelled, "race", iterations=5, n_samples=100)["events"][0]
+    assert not unavailable["required_inputs_available"]
+    assert not unavailable["full_order"]
+    assert unavailable["required_input_unavailability_reason"] == (
+        "required qualifying positions are unavailable for one or more entrants"
+    )
+
+
 def test_unfinished_qualifying_and_race_cannot_become_training_labels_or_gp_completion():
     features = pd.DataFrame(
         [
@@ -274,7 +414,7 @@ def test_historical_prepare_never_uses_partial_q_as_race_roster(tmp_path, monkey
                 }
             )
     summaries = pd.DataFrame(rows)
-    monkeypatch.setattr("f1forecast.datasets.load_summaries", lambda _archive: summaries)
+    monkeypatch.setattr("f1forecast.datasets.load_summaries", lambda _archive, **_kwargs: summaries)
     with pytest.raises(ValueError, match="no target"):
         prepare_training_data(tmp_path / "archive", tmp_path / "partial.parquet")
 
@@ -307,6 +447,7 @@ def test_walk_forward_keeps_2025_locked_and_reports_2026_separately(tmp_path, mo
                     "position": position,
                     "status": "Finished",
                     "recent_qualifying_rank": position / 2,
+                    "practice_pace_gap_s": float(position),
                     "baseline_score": 1 - position / 2,
                     "cutoff": f"{season}-03-{event:02d}T11:30:00Z",
                     "target_session_end": f"{season}-03-{event:02d}T13:00:00Z",
@@ -321,6 +462,11 @@ def test_walk_forward_keeps_2025_locked_and_reports_2026_separately(tmp_path, mo
     for feature in NUMERIC_FEATURES:
         if feature not in frame:
             frame[feature] = np.nan
+    # CLI evaluation reads the prepared Parquet table, whose array columns
+    # deserialize as numpy arrays rather than their original Python tuples.
+    prepared = tmp_path / "prepared.parquet"
+    frame.to_parquet(prepared, index=False)
+    frame = pd.read_parquet(prepared)
     from f1forecast import training
 
     original_fit = training.fit_ranker
@@ -335,6 +481,7 @@ def test_walk_forward_keeps_2025_locked_and_reports_2026_separately(tmp_path, mo
     report = walk_forward_backtest(
         frame, "qualifying", iterations=12, min_train_events=2, n_samples=100, seed=8
     )
+    assert report["evaluation_schema_version"] == "2"
     assert fit_count == 4  # One chronological fit for each eligible held event.
     locked = next(item for item in report["events"] if item["season"] == 2025)
     separate = next(item for item in report["events"] if item["season"] == 2026)
@@ -349,9 +496,14 @@ def test_walk_forward_keeps_2025_locked_and_reports_2026_separately(tmp_path, mo
     assert locked["model_version"].startswith("qualifying-fold-")
     assert locked["source_snapshot_ids"] == ["2025-05-FP1-snapshot"]
     assert locked["used_session_ids"] == ["2025-05-FP1"]
+    assert locked["required_inputs_available"]
+    assert locked["required_input_unavailability_reason"] is None
     assert report["baseline_selection_provenance"] == "posthoc development 2022-2024"
     for forecast_name in ("baseline_forecast", "learned_forecast"):
         forecast = locked[forecast_name]
+        assert set(forecast["explanations"]) == {"a", "b"}
+        assert all(forecast["explanations"].values())
+        assert forecast["explanation_method"]
         assert forecast["driver_ids"] == ["a", "b"]
         assert len(forecast["scores"]) == 2
         assert forecast["temperature"] > 0
@@ -401,6 +553,38 @@ def test_walk_forward_keeps_2025_locked_and_reports_2026_separately(tmp_path, mo
     assert revised_locked["model_version"] == locked["model_version"]
     assert revised_locked["training_dataset_sha256"] == locked["training_dataset_sha256"]
     assert revised_locked["learned_forecast"] == locked["learned_forecast"]
+    unavailable = frame.copy()
+    unavailable.loc[unavailable["season"].isin([2024, 2025]), "practice_pace_gap_s"] = np.nan
+    unavailable_report = walk_forward_backtest(
+        unavailable, "qualifying", iterations=12, min_train_events=2, n_samples=100, seed=8
+    )
+    unavailable_locked = next(
+        item for item in unavailable_report["events"] if item["season"] == 2025
+    )
+    assert not unavailable_locked["required_inputs_available"]
+    assert (
+        unavailable_locked["evaluation_exclusion_reason"] == "required practice pace is unavailable"
+    )
+    assert unavailable_locked["learned_forecast"] is not None  # Diagnostic only.
+    assert unavailable_report["periods"]["locked_2025"]["baseline"]["evaluated_events"] == 0
+    assert unavailable_report["periods"]["locked_2025"]["learned"]["evaluated_events"] == 0
+    assert not unavailable_report["promotion_passed"]
+    unavailable_2026 = next(item for item in unavailable_report["events"] if item["season"] == 2026)
+    assert unavailable_2026["calibration_oof_events"] == 1
+    unavailable_artifact = fit_final_model(
+        unavailable,
+        "qualifying",
+        training_cutoff="2027-01-01T00:00:00Z",
+        output_dir=tmp_path / "unavailable",
+        iterations=12,
+        min_train_events=2,
+        seed=8,
+    )
+    unavailable_metadata = json.loads(unavailable_artifact.metadata_path.read_text())
+    assert unavailable_metadata["calibration_oof_events"] == 1
+    assert (
+        unavailable_metadata["baseline_temperature"] == unavailable_report["baseline_temperature"]
+    )
     frame.loc[frame["season"].eq(2026), "source_latest_at"] = "2026-03-06T12:00:00Z"
     with pytest.raises(ValueError, match="source"):
         walk_forward_backtest(

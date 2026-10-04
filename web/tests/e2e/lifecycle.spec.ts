@@ -1,12 +1,14 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import type { SiteData } from '../../src/generated/site-data';
 
 const prefix = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 const visit = (page: Page, path: string) => page.goto(`${prefix}${path}`);
 const audit = async (page: Page) => expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
-test('synthetic fixture covers every forecast lifecycle state with accessible content', async ({ page }) => {
-  const cases = [
+const lifecycleCases = [
     ['/2026/demonstration/?target=qualifying', 'Demonstration'],
     ['/2026/demonstration/?target=race', 'Not issued'],
     ['/2026/test-scheduled/?target=qualifying', 'Scheduled'],
@@ -16,12 +18,31 @@ test('synthetic fixture covers every forecast lifecycle state with accessible co
     ['/2026/test-incomplete/?target=qualifying', 'Reconciled'],
     ['/2026/test-reconstructed/?target=qualifying', 'Reconstructed'],
   ] as const;
-  for (const [path, label] of cases) {
+
+for (const [path, label] of lifecycleCases) {
+  test(`synthetic ${path} exposes the accessible ${label} lifecycle`, async ({ page }) => {
     await visit(page, path);
     await expect(page.getByRole('complementary', { name: 'Data status' })).toContainText('SYNTHETIC TEST FIXTURE ONLY');
     await expect(page.locator('.lifecycle strong')).toHaveText(label);
     await audit(page);
-  }
+  });
+}
+
+test('client clock advances scheduled to missed cutoff and issued to awaiting result', async ({ page }) => {
+  const fixture = JSON.parse(readFileSync(resolve(process.cwd(), 'tests/.generated/lifecycle-site.json'), 'utf8')) as SiteData;
+  const scheduled = fixture.events.find((event) => event.id === 'test-scheduled')!;
+  const cutoff = Date.parse(scheduled.targets.find((target) => target.target === 'qualifying')!.cutoff_at);
+  await page.clock.install({ time: new Date(cutoff - 60_000) });
+  await visit(page, '/2026/test-scheduled/?target=qualifying');
+  await expect(page.locator('.lifecycle strong')).toHaveText('Scheduled');
+  await expect(page.locator('.lifecycle span')).toHaveText('Forecast cutoff in 0h 01m');
+  await page.clock.fastForward(61_000);
+  await expect(page.locator('.lifecycle strong')).toHaveText('Not issued');
+
+  await visit(page, '/2026/test-issued/?target=qualifying');
+  await expect(page.locator('.lifecycle strong')).toHaveText('Issued');
+  await page.clock.fastForward(31 * 60_000);
+  await expect(page.locator('.lifecycle strong')).toHaveText('Awaiting result');
 });
 
 test('reconciled fixture scores a complete classification and retains retired status', async ({ page }) => {
@@ -65,4 +86,29 @@ test('synthetic public traces switch speed, throttle and brake with an accessibl
   await page.getByText('View telemetry data table').click();
   await expect(page.getByRole('table', { name: 'Selected public speed, throttle and braking samples' })).toBeVisible();
   await audit(page);
+});
+
+test('telemetry loads on demand and changing pairs clears stale traces before a failed request', async ({ page }) => {
+  const telemetryRequests: string[] = [];
+  page.on('request', (request) => { if (request.url().includes('/telemetry/')) telemetryRequests.push(request.url()); });
+  await visit(page, '/2026/demonstration/');
+  await expect(page.getByRole('button', { name: 'Open comparison' })).toBeVisible();
+  expect(telemetryRequests).toEqual([]);
+  await page.getByRole('button', { name: 'Open comparison' }).click();
+  await expect(page.getByRole('img', { name: 'speed traces for VEG and CRO across lap distance' })).toBeVisible();
+
+  let failRequest: (() => Promise<void>) | undefined;
+  await page.route('**/telemetry/demonstration-driver-03.json', (route) => {
+    failRequest = () => route.fulfill({ status: 503, body: 'Unavailable' });
+  });
+  await page.getByRole('combobox', { name: 'DRIVER A' }).selectOption('LAU');
+  await expect.poll(() => Boolean(failRequest)).toBe(true);
+  await expect(page.getByRole('status')).toHaveText('Loading public trace summary…');
+  await expect(page.locator('.telemetry-chart canvas')).toHaveCount(0);
+  await failRequest!();
+  await expect(page.getByText('Telemetry traces could not be loaded.')).toBeVisible();
+  await audit(page);
+
+  await page.getByRole('combobox', { name: 'DRIVER A' }).selectOption('VEG');
+  await expect(page.getByRole('img', { name: 'speed traces for VEG and CRO across lap distance' })).toBeVisible();
 });

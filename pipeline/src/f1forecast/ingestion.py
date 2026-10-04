@@ -10,7 +10,9 @@ from typing import Protocol, cast
 import pandas as pd
 
 from .archive import latest_snapshot, load_summaries, write_snapshot
-from .providers import FastF1Provider, JolpicaProvider, RawSession
+from .identity import canonical_team_id
+from .lap_summaries import LAP_SUMMARY_SEMANTICS, summarize_laps
+from .providers import FastF1Provider, JolpicaProvider, RawSession, SourceValidationError
 
 SESSION_TYPES = {"FP1", "FP2", "FP3", "Q", "SQ", "S", "R"}
 
@@ -56,8 +58,38 @@ def _number(series: pd.Series, low: float, high: float, label: str) -> pd.Series
     values = cast(pd.Series, pd.to_numeric(series, errors="coerce"))
     invalid = values.notna() & ~values.between(low, high)
     if bool(invalid.any()):
-        raise ValueError(f"{label} outside expected units/range [{low}, {high}]")
+        raise SourceValidationError(f"{label} outside expected units/range [{low}, {high}]")
     return values
+
+
+def _normalize_trace(trace: pd.DataFrame, driver_id: str) -> pd.DataFrame:
+    output = pd.DataFrame()
+    if trace.empty or "Distance" not in trace:
+        return output
+    if "Date" in trace:
+        sample_time = cast(
+            pd.Series, pd.to_datetime(_column(trace, "Date"), utc=True, errors="coerce")
+        )
+        if bool(sample_time.dropna().duplicated().any()):
+            raise SourceValidationError("duplicate telemetry timestamp")
+        output["sample_time"] = sample_time
+    # FastF1 interpolation can place the first sample centimetres before zero.
+    output["distance_m"] = _number(
+        _column(trace, "Distance"), -1, 100000, "distance metres"
+    ).clip(lower=0)
+    for source, destination, low, high in (
+        ("Speed", "speed_kph", 0, 500),
+        ("Throttle", "throttle_fraction", 0, 105),
+        ("Brake", "brake", 0, 1),
+        ("X", "x", -100000, 100000),
+        ("Y", "y", -100000, 100000),
+    ):
+        if source in trace:
+            output[destination] = _number(_column(trace, source), low, high, destination)
+    if "throttle_fraction" in output:
+        output["throttle_fraction"] = _column(output, "throttle_fraction").clip(upper=100) / 100.0
+    output["driver_id"] = driver_id
+    return output
 
 
 def normalize_session(
@@ -73,33 +105,48 @@ def normalize_session(
         raise ValueError("invalid provenance")
     start, end, retrieval = _utc(raw.session_start), _utc(raw.session_end), _utc(retrieved_at)
     if end < start or retrieval < end:
-        raise ValueError("session boundaries or retrieval chronology invalid")
+        raise SourceValidationError("session boundaries or retrieval chronology invalid")
     laps = raw.laps.copy()
     if laps.empty:
-        raise ValueError("session has no laps")
+        raise SourceValidationError("session has no laps")
     required = {"Driver", "DriverNumber", "LapNumber", "LapTime"}
     if not required.issubset(laps.columns):
-        raise ValueError(f"missing lap columns: {sorted(required - set(laps.columns))}")
+        raise SourceValidationError(f"missing lap columns: {sorted(required - set(laps.columns))}")
     if bool(cast(pd.Series, laps[["Driver", "LapNumber"]].duplicated()).any()):
-        raise ValueError("duplicate driver lap identity")
+        raise SourceValidationError("duplicate driver lap identity")
     if bool(_column(laps, "Driver").isna().any()) or bool(
         _column(laps, "DriverNumber").isna().any()
     ):
-        raise ValueError("missing driver identity")
+        raise SourceValidationError("missing driver identity")
     identities = cast(pd.DataFrame, laps[["Driver", "DriverNumber"]].drop_duplicates())
     if bool(_column(identities, "Driver").duplicated().any()) or bool(
         _column(identities, "DriverNumber").duplicated().any()
     ):
-        raise ValueError("ambiguous driver identity")
+        raise SourceValidationError("ambiguous driver identity")
     lap_seconds = pd.to_timedelta(_column(laps, "LapTime"), errors="coerce").dt.total_seconds()
-    laps["lap_seconds"] = _number(lap_seconds, 20.0, 300.0, "lap time seconds")
-    if (
-        "LapStartTime" in laps
-        and bool(_column(laps, "LapStartTime").notna().any())
-        and bool(cast(pd.Series, laps[["Driver", "LapStartTime"]].dropna().duplicated()).any())
-    ):
-        raise ValueError("duplicate lap timestamp")
-    usable = _column(laps, "lap_seconds").notna()
+    # Interruptions can make genuine source laps last many minutes. Retain the
+    # observation, validate it against the session, and limit only pace eligibility.
+    laps["lap_seconds"] = _number(
+        lap_seconds, 0.0, (end - start).total_seconds(), "lap time seconds"
+    )
+    in_pace_range = _column(laps, "lap_seconds").between(20.0, 300.0)
+    invalid_lap_timestamp = pd.Series(False, index=laps.index)
+    if "LapStartTime" in laps:
+        duplicate_times = cast(pd.Series, laps.duplicated(["Driver", "LapStartTime"], keep=False))
+        duplicate_times &= _column(laps, "LapStartTime").notna()
+        if bool(duplicate_times.any()):
+            # Spain 2025 FP3 contains repeated zero placeholders on inaccurate
+            # laps in both sources. Retain them, with an explicit quality flag.
+            placeholders = _column(laps, "LapStartTime").eq(pd.Timedelta(0))
+            placeholders &= (
+                _column(laps, "IsAccurate").eq(False)
+                if "IsAccurate" in laps else pd.Series(False, index=laps.index)
+            )
+            if bool((duplicate_times & ~placeholders).any()):
+                raise SourceValidationError("duplicate lap timestamp")
+            invalid_lap_timestamp = duplicate_times
+    laps["lap_timestamp_valid"] = ~invalid_lap_timestamp
+    usable = in_pace_range & ~invalid_lap_timestamp
     for column, accepted in (("IsAccurate", True), ("Deleted", False)):
         if column in laps:
             usable &= _column(laps, column).fillna(not accepted).eq(accepted)
@@ -119,7 +166,7 @@ def normalize_session(
         and "Abbreviation" in results
         and bool(_column(results, "Abbreviation").duplicated().any())
     ):
-        raise ValueError("duplicate result driver identity")
+        raise SourceValidationError("duplicate result driver identity")
     result_lookup = (
         results.set_index("Abbreviation") if "Abbreviation" in results else pd.DataFrame()
     )
@@ -132,6 +179,8 @@ def normalize_session(
                     times = pd.to_timedelta(phase_values, errors="coerce").dt.total_seconds()
                     qualifying_best[phase] = times.min()
     telemetry_rows: list[pd.DataFrame] = []
+    rejected_trace_rows: list[pd.DataFrame] = []
+    rejected_telemetry: dict[str, str] = {}
     circuit = pd.DataFrame(columns=pd.Index(["distance_m", "x", "y"]))
     missing_telemetry = []
     missing_laps = []
@@ -149,44 +198,29 @@ def normalize_session(
             if not result_lookup.empty and driver in result_lookup.index
             else None
         )
-        team = (
-            str(_column(driver_laps, "Team").dropna().iloc[0])
-            if "Team" in laps and bool(_column(driver_laps, "Team").notna().any())
-            else (
-                str(result.get("TeamName"))
-                if result is not None and not _missing(result.get("TeamName"))
-                else None
-            )
-        )
+        team = next(
+            (
+                identity
+                for value in _column(driver_laps, "Team")
+                if (identity := canonical_team_id(value, raw.season)) is not None
+            ),
+            None,
+        ) if "Team" in driver_laps else None
+        if team is None and result is not None:
+            team = canonical_team_id(result.get("TeamName"), raw.season)
         trace = raw.telemetry.get(driver, pd.DataFrame()).copy()
-        trace_out = pd.DataFrame()
-        if not trace.empty and "Distance" in trace:
-            if "Date" in trace:
-                sample_time = cast(
-                    pd.Series, pd.to_datetime(_column(trace, "Date"), utc=True, errors="coerce")
-                )
-                if bool(sample_time.dropna().duplicated().any()):
-                    raise ValueError("duplicate telemetry timestamp")
-                trace_out["sample_time"] = sample_time
-            # FastF1 interpolation can place the first sample centimetres before zero.
-            trace_out["distance_m"] = _number(
-                _column(trace, "Distance"), -1, 100000, "distance metres"
-            ).clip(lower=0)
-            for source, output, low, high in (
-                ("Speed", "speed_kph", 0, 500),
-                ("Throttle", "throttle_fraction", 0, 105),
-                ("Brake", "brake", 0, 1),
-                ("X", "x", -100000, 100000),
-                ("Y", "y", -100000, 100000),
-            ):
-                if source in trace:
-                    trace_out[output] = _number(_column(trace, source), low, high, output)
-            if "throttle_fraction" in trace_out:
-                # FastF1 interpolation can overshoot its nominal 0-100 percent channel.
-                trace_out["throttle_fraction"] = (
-                    _column(trace_out, "throttle_fraction").clip(upper=100) / 100.0
-                )
-            trace_out["driver_id"] = raw.driver_ids.get(driver, driver.lower())
+        driver_id = raw.driver_ids.get(driver, driver.lower())
+        try:
+            # An explicit unresolved mapping must not become an invented code ID.
+            # Retain its source trace separately until an identity is established.
+            if driver_id is None:
+                raise SourceValidationError("unresolved driver identity")
+            trace_out = _normalize_trace(trace, driver_id)
+        except SourceValidationError as exc:
+            rejected_telemetry[driver] = str(exc)
+            rejected_trace_rows.append(trace.assign(driver_code=driver, validation_error=str(exc)))
+            trace_out = pd.DataFrame()
+        if not trace_out.empty:
             telemetry_rows.append(trace_out)
             if circuit.empty and {"x", "y"}.issubset(trace_out.columns):
                 circuit = trace_out[["distance_m", "x", "y"]].dropna().copy()
@@ -195,16 +229,7 @@ def normalize_session(
             or not {"speed_kph", "throttle_fraction", "brake"}.issubset(trace_out.columns)
         ):
             missing_telemetry.append(driver)
-        long_run = pd.NA
-        if len(valid) >= 3:
-            # Consecutive valid laps are an observable stint proxy; pit laps were removed above.
-            consecutive = _column(valid, "LapNumber").diff().fillna(1).eq(1)
-            groups = (~consecutive).cumsum()
-            runs = cast(
-                pd.Series, valid.groupby(groups)["lap_seconds"].filter(lambda x: len(x) >= 3)
-            )
-            if not runs.empty:
-                long_run = float(str(runs.median()))
+        lap_summary = summarize_laps(driver_laps)
         position = _scalar_float(result.get("Position")) if result is not None else None
         status = (
             str(result.get("Status"))
@@ -234,9 +259,9 @@ def normalize_session(
                 "event_id": raw.event_id,
                 "season": raw.season,
                 "circuit_id": raw.circuit_id,
-                "driver_id": raw.driver_ids.get(driver, driver.lower()),
+                "driver_id": driver_id,
                 "driver_code": driver,
-                "team_id": team.lower().replace(" ", "_") if team else None,
+                "team_id": team,
                 "session_id": f"{raw.event_id}-{raw.session_type}",
                 "session_type": raw.session_type,
                 "session_start": start,
@@ -249,10 +274,7 @@ def normalize_session(
                 "pace_s": float(str(_column(valid, "lap_seconds").median()))
                 if not valid.empty
                 else pd.NA,
-                "long_run_pace_s": long_run,
-                "consistency_s": float(str(_column(valid, "lap_seconds").std()))
-                if len(valid) >= 2
-                else pd.NA,
+                **lap_summary,
                 "usable_laps": len(valid),
                 "tyre_age": float(str(_column(valid, "TyreLife").median()))
                 if "TyreLife" in valid and bool(_column(valid, "TyreLife").notna().any())
@@ -280,7 +302,7 @@ def normalize_session(
         )
     summary = pd.DataFrame(rows)
     if bool(_column(summary, "driver_id").duplicated().any()):
-        raise ValueError("duplicate normalized driver identity")
+        raise SourceValidationError("duplicate normalized driver identity")
     telemetry = (
         pd.concat(telemetry_rows, ignore_index=True)
         if telemetry_rows
@@ -291,13 +313,19 @@ def normalize_session(
         "results": results,
         "weather": weather,
         "telemetry": telemetry,
+        "rejected_telemetry": pd.concat(rejected_trace_rows, ignore_index=True)
+        if rejected_trace_rows else pd.DataFrame(columns=pd.Index(["driver_code", "validation_error"])),
         "circuit": circuit,
     }
     coverage = {
         "drivers": len(summary),
         "laps": len(laps),
         "usable_laps": int(_column(laps, "usable").sum()),
+        "out_of_pace_range_laps": int((_column(laps, "lap_seconds").notna() & ~in_pace_range).sum()),
+        "invalid_lap_timestamp_rows": int(invalid_lap_timestamp.sum()),
         "missing_telemetry_drivers": missing_telemetry,
+        "rejected_telemetry_drivers": rejected_telemetry,
+        "telemetry_omission_reason": raw.telemetry_omission_reason,
         "missing_lap_drivers": missing_laps,
         "weather_rows": len(weather),
         "circuit_points": len(circuit),
@@ -307,7 +335,12 @@ def normalize_session(
     )
     coverage["session_complete"] = raw.completed
     coverage["completion_evidence"] = raw.completion_evidence
-    coverage["complete"] = raw.completed and not missing_telemetry and not missing_results
+    missing_teams = _column(summary.loc[_column(summary, "team_id").isna()], "driver_code")
+    coverage["missing_team_drivers"] = missing_teams.tolist()
+    telemetry_satisfied = not missing_telemetry or bool(raw.telemetry_omission_reason)
+    coverage["complete"] = (
+        raw.completed and telemetry_satisfied and not missing_results and missing_teams.empty
+    )
     coverage["missing_results"] = bool(missing_results)
     return summary, tables, coverage
 
@@ -399,6 +432,7 @@ def ingest_session(
             "sources": sources,
             "source_files": raw.source_files,
             "extraction_version": raw.extraction_version,
+            "lap_summary_semantics": LAP_SUMMARY_SEMANTICS,
             "coverage": coverage,
             "provenance": provenance,
         },

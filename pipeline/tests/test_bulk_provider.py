@@ -146,6 +146,18 @@ def _provider(transport, *, clock=None, sleep=None):
     clock = clock or [0.0]
 
     class PracticeRoster:
+        def fetch_schedule(self, year, event, session_type):
+            starts = {
+                "FP1": "2022-03-18T12:00:00Z",
+                "Q": "2022-03-19T15:00:00Z",
+                "R": "2022-03-20T15:00:00Z",
+            }
+            return pd.Timestamp(starts[session_type]), {
+                "url": "https://raw.githubusercontent.com/theOehrly/f1schedule/master/schedule_2022.json",
+                "sha256": "2" * 64, "bytes": 10,
+                "source": "FastF1 UTC event schedule",
+            }
+
         def fetch_driver_list(self, year, event, session_type):
             return pd.DataFrame(
                 [
@@ -181,7 +193,7 @@ def test_practice_adapter_maps_pinned_laps_weather_and_only_fastest_telemetry():
     assert raw.telemetry["LEC"]["Speed"].tolist() == [200.0, 250.0]
     assert len([url for url in requested if url.endswith("_tel.json")]) == 2
     assert all(f"/{COMMITS[2022]}/" in url for url in requested)
-    assert len(raw.source_files) == 8  # Archive JSON, traces, calendar, identities, DriverList.
+    assert len(raw.source_files) == 9  # JSON, traces, calendars, identities, DriverList.
     assert all(
         len(item["sha256"]) == 64 and item["url"].startswith("https://")
         for item in raw.source_files
@@ -201,9 +213,12 @@ def test_qualifying_uses_jolpica_classification_without_telemetry_requests():
     assert not any(url.endswith("_tel.json") for url in requested)
     assert raw.results["Position"].tolist() == [1, 2]
     assert raw.results["Q3"].dt.total_seconds().tolist() == [89.0, 89.5]
-    summary, _, _ = normalize_session(raw, datetime(2026, 9, 26, tzinfo=UTC))
+    summary, _, coverage = normalize_session(raw, datetime(2026, 9, 26, tzinfo=UTC))
     assert summary.set_index("driver_code").loc["LEC", "qualifying_gap"] == 0.0
     assert summary.set_index("driver_code").loc["VER", "qualifying_gap"] == 0.5
+    assert coverage["complete"]
+    assert coverage["telemetry_omission_reason"] == "target-session telemetry excluded"
+    assert coverage["missing_telemetry_drivers"] == ["LEC", "VER"]
 
 
 def test_bulk_adapter_fails_closed_on_missing_required_json():
@@ -233,7 +248,7 @@ def test_practice_driver_list_keeps_zero_lap_entrant_without_target_results():
     transport, _ = _fixture_transport()
     provider = _provider(transport)
 
-    class ThreeEntrants:
+    class ThreeEntrants(type(provider.practice_roster)):
         def fetch_driver_list(self, year, event, session_type):
             return pd.DataFrame(
                 [
@@ -257,3 +272,88 @@ def test_practice_driver_list_keeps_zero_lap_entrant_without_target_results():
     assert pd.isna(absent["position"])
     assert raw.source_labels["results"] == "FastF1 same-session DriverList"
     assert coverage["session_complete"]
+
+
+def test_duplicate_bulk_lap_identity_is_an_expected_source_failure():
+    payload = _laps()
+    payload["lap"][1] = 1
+    with pytest.raises(ValueError, match="duplicate bulk lap identity") as error:
+        TracingInsightsProvider._laps(payload)
+    assert type(error.value).__name__ == "SourceValidationError"
+
+
+def test_null_string_bulk_identity_cannot_become_a_driver():
+    payload = _laps()
+    payload["drv"][0] = "None"
+    with pytest.raises(ValueError, match="missing bulk driver identity"):
+        TracingInsightsProvider._laps(payload)
+
+
+def test_unexpected_practice_roster_code_error_remains_visible():
+    transport, _ = _fixture_transport()
+    provider = _provider(transport)
+
+    class BrokenRoster(type(provider.practice_roster)):
+        def fetch_driver_list(self, *_args):
+            raise TypeError("unexpected programming error")
+
+    provider.practice_roster = BrokenRoster()
+    with pytest.raises(TypeError, match="unexpected programming error"):
+        provider.fetch_session(2022, 1, "FP1")
+
+
+def test_bulk_session_uses_verified_fastf1_utc_start_instead_of_wrong_calendar_day():
+    transport, _ = _fixture_transport()
+    provider = _provider(transport)
+
+    class CorrectedSchedule(type(provider.practice_roster)):
+        def fetch_schedule(self, year, event, session_type):
+            _, record = super().fetch_schedule(year, event, session_type)
+            # Mirrors the verified Vegas UTC-date discrepancy without guessing from laps.
+            return pd.Timestamp("2022-03-21T15:00:00Z"), record
+
+    provider.practice_roster = CorrectedSchedule()
+    raw = provider.fetch_session(2022, 1, "R")
+    assert raw.session_start == pd.Timestamp("2022-03-21T15:00:00Z")
+    assert raw.session_end >= pd.Timestamp("2022-03-21T17:00:00Z")
+    assert "FastF1 UTC" in raw.source_labels["schedule"]
+    assert any(record.get("source") == "FastF1 UTC event schedule" for record in raw.source_files)
+
+
+def test_bulk_laps_retain_source_stint_numbers():
+    payload = _laps()
+    payload["stint"] = [1, 2, 1, 3]
+    laps = TracingInsightsProvider._laps(payload)
+    assert laps["Stint"].tolist() == [1, 2, 1, 3]
+
+
+def test_source_stint_restoration_joins_exact_driver_lap_identity_without_reordering():
+    from f1forecast.bulk_provider import restore_source_stints
+
+    payload = _laps()
+    payload["stint"] = [1, 2, 1, 3]
+    archived = TracingInsightsProvider._laps(payload).drop(columns=["Stint"], errors="ignore")
+    archived = archived.iloc[[3, 0, 2, 1]].reset_index(drop=True)
+    observed = restore_source_stints(archived, payload)
+    assert observed is not None
+    assert observed["Stint"].tolist() == [3, 1, 1, 2]
+    pd.testing.assert_frame_equal(observed.drop(columns="Stint"), archived)
+    assert "Stint" not in archived
+
+
+def test_source_stint_restoration_refuses_missing_identities():
+    from f1forecast.bulk_provider import restore_source_stints
+
+    payload = _laps()
+    archived = TracingInsightsProvider._laps(payload).iloc[:-1]
+    with pytest.raises(ValueError, match="identity mismatch"):
+        restore_source_stints(archived, payload)
+
+
+def test_source_stint_restoration_reports_absent_source_field():
+    from f1forecast.bulk_provider import restore_source_stints
+
+    payload = _laps()
+    archived = TracingInsightsProvider._laps(payload)
+    del payload["stint"]
+    assert restore_source_stints(archived, payload) is None

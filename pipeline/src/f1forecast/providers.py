@@ -21,6 +21,10 @@ from fastf1.core import Session, Telemetry
 from fastf1.exceptions import RateLimitExceededError
 
 
+class SourceValidationError(ValueError):
+    """Expected malformed source observations, eligible for an alternate provider."""
+
+
 @dataclass
 class RawSession:
     season: int
@@ -40,6 +44,7 @@ class RawSession:
     completion_evidence: str | None = None
     source_labels: dict[str, str] = field(default_factory=dict)
     extraction_version: str | None = None
+    telemetry_omission_reason: str | None = None
 
 
 def session_is_complete(status: pd.DataFrame) -> bool:
@@ -170,9 +175,13 @@ class FastF1Provider:
     _MIN_SESSION_INTERVAL_S = 90
     _RATE_WINDOW_BACKOFF_S = 3601
 
-    def __init__(self, cache_dir: Path | str) -> None:
+    def __init__(
+        self, cache_dir: Path | str, *, sleep: Callable[[float], None] | None = None
+    ) -> None:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._sleep = sleep if sleep is not None else time.sleep
+        self._schedules: dict[int, Any] = {}
 
     def _pace_fetch(self) -> None:
         """Persist a conservative start interval across resumable workers."""
@@ -185,7 +194,7 @@ class FastF1Provider:
             remaining = self._MIN_SESSION_INTERVAL_S - elapsed
             if remaining > 0:
                 logging.getLogger(__name__).info("FastF1 source pacing %.1f s", remaining)
-                time.sleep(remaining)
+                self._sleep(remaining)
         staged = budget.with_suffix(".staging")
         staged.write_text(
             json.dumps({"last_fetch_start_utc": datetime.now(UTC).isoformat()}),
@@ -206,7 +215,7 @@ class FastF1Provider:
                     "FastF1 hourly request budget reached; retrying after %d s",
                     self._RATE_WINDOW_BACKOFF_S,
                 )
-                time.sleep(self._RATE_WINDOW_BACKOFF_S)
+                self._sleep(self._RATE_WINDOW_BACKOFF_S)
         raise RuntimeError("FastF1 rate-limit retry exhausted")
 
     def fetch_driver_list(
@@ -218,7 +227,12 @@ class FastF1Provider:
         fastf1.Cache.enable_cache(str(self.cache_dir))
         for attempt in range(2):
             try:
-                session = fastf1.get_session(year, event, session_type)
+                if isinstance(event, int):
+                    if year not in self._schedules:
+                        self._schedules[year] = fastf1.get_event_schedule(year, backend="fastf1")
+                    session = self._schedules[year].get_event_by_round(event).get_session(session_type)
+                else:
+                    session = fastf1.get_session(year, event, session_type)
                 source = fastf1_api.driver_info(session.api_path)
                 break
             except RateLimitExceededError:
@@ -228,11 +242,11 @@ class FastF1Provider:
                     "FastF1 DriverList hourly budget reached; retrying after %d s",
                     self._RATE_WINDOW_BACKOFF_S,
                 )
-                time.sleep(self._RATE_WINDOW_BACKOFF_S)
+                self._sleep(self._RATE_WINDOW_BACKOFF_S)
         else:
             raise RuntimeError("FastF1 DriverList rate-limit retry exhausted")
         if not source:
-            raise ValueError("same-session FastF1 DriverList is empty")
+            raise SourceValidationError("same-session FastF1 DriverList is empty")
         rows = []
         for number, entry in source.items():
             first, last = entry.get("FirstName"), entry.get("LastName")
@@ -253,7 +267,7 @@ class FastF1Provider:
             or bool(numbers.duplicated().any())
             or bool(abbreviations.duplicated().any())
         ):
-            raise ValueError("same-session FastF1 DriverList has ambiguous identities")
+            raise SourceValidationError("same-session FastF1 DriverList has ambiguous identities")
         canonical = json.dumps(source, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
             "utf-8"
         )
@@ -263,6 +277,31 @@ class FastF1Provider:
             "bytes": len(canonical),
             "hash_kind": "canonical_driver_info_json",
             "source": "FastF1 same-session DriverList (cached or live; mirror fallback possible)",
+            "accessed_at": datetime.now(UTC).isoformat(),
+        }
+
+    def fetch_schedule(
+        self, year: int, event: int, session_type: str
+    ) -> tuple[pd.Timestamp, dict[str, str | int]]:
+        """Read the provider's explicit UTC date, never infer dates from lap timestamps."""
+        fastf1.Cache.enable_cache(str(self.cache_dir))
+        if year not in self._schedules:
+            self._schedules[year] = fastf1.get_event_schedule(year, backend="fastf1")
+        metadata = self._schedules[year].get_event_by_round(event)
+        value = pd.Timestamp(metadata.get_session_date(session_type, utc=True))
+        if not isinstance(value, pd.Timestamp):
+            raise SourceValidationError("FastF1 UTC event schedule has no session date")
+        start = value.tz_localize("UTC") if value.tzinfo is None else value.tz_convert("UTC")
+        canonical = json.dumps(
+            metadata.to_dict(), sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, default=str,
+        ).encode("utf-8")
+        return start, {
+            "url": f"https://raw.githubusercontent.com/theOehrly/f1schedule/master/schedule_{year}.json",
+            "sha256": hashlib.sha256(canonical).hexdigest(),
+            "bytes": len(canonical),
+            "digest_basis": "canonical_event_schedule_row",
+            "source": "FastF1 UTC event schedule",
             "accessed_at": datetime.now(UTC).isoformat(),
         }
 
