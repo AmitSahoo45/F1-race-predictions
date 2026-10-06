@@ -77,11 +77,6 @@ export type Compound = string;
 export type Laps = number;
 export type PaceS = number;
 export type Stints = Stint[];
-export type DistanceM = number;
-export type SpeedKph = number;
-export type ThrottlePct = number;
-export type Brake = boolean;
-export type Telemetry = TelemetryPoint[];
 export type Drivers1 = DriverAnalysis[];
 export type Target2 = "qualifying" | "race";
 export type DriverId2 = string;
@@ -214,18 +209,11 @@ export interface DriverAnalysis {
   practice_pace_s: PracticePaceS;
   long_run_pace_s: LongRunPaceS;
   stints: Stints;
-  telemetry: Telemetry;
 }
 export interface Stint {
   compound: Compound;
   laps: Laps;
   pace_s: PaceS;
-}
-export interface TelemetryPoint {
-  distance_m: DistanceM;
-  speed_kph: SpeedKph;
-  throttle_pct: ThrottlePct;
-  brake: Brake;
 }
 export interface ActualResult {
   target: Target2;

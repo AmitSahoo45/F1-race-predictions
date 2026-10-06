@@ -1,0 +1,91 @@
+{
+  "$defs": {
+    "TelemetryPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "distance_m": {
+          "minimum": 0,
+          "title": "Distance M",
+          "type": "number"
+        },
+        "speed_kph": {
+          "maximum": 450,
+          "minimum": 0,
+          "title": "Speed Kph",
+          "type": "number"
+        },
+        "throttle_pct": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Throttle Pct",
+          "type": "number"
+        },
+        "brake": {
+          "title": "Brake",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "distance_m",
+        "speed_kph",
+        "throttle_pct",
+        "brake"
+      ],
+      "title": "TelemetryPoint",
+      "type": "object"
+    },
+    "TelemetryTrace": {
+      "additionalProperties": false,
+      "properties": {
+        "driver_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Driver Id",
+          "type": "string"
+        },
+        "session_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "points": {
+          "items": {
+            "$ref": "#/$defs/TelemetryPoint"
+          },
+          "minItems": 1,
+          "title": "Points",
+          "type": "array"
+        }
+      },
+      "required": [
+        "driver_id",
+        "session_id",
+        "points"
+      ],
+      "title": "TelemetryTrace",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Selected public traces, published beside site.json and loaded on demand.",
+  "properties": {
+    "event_id": {
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "traces": {
+      "items": {
+        "$ref": "#/$defs/TelemetryTrace"
+      },
+      "title": "Traces",
+      "type": "array"
+    }
+  },
+  "required": [
+    "event_id",
+    "traces"
+  ],
+  "title": "EventTelemetry",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

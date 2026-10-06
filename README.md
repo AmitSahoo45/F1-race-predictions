@@ -93,13 +93,13 @@ The workflows are ready for a public GitHub repository, but no repository has be
 1. Push reviewed code and derived release artifacts to your repository.
 2. Select **GitHub Actions** as the repository's Pages build source.
 3. Run **Deploy static site**. Its build receives the correct project `basePath`.
-4. Scheduled inference runs at minutes 7 and 37. It exits without provider calls when no model is approved and without artifact writes outside active weekend windows.
+4. Scheduled inference runs at minutes 3, 13, 23, 33, 43 and 53, which gives three attempts inside each 30-minute pre-cutoff window. It exits without provider calls when no model is approved and without artifact writes outside active weekend windows.
 
 The forecast workflow preserves its cache, serializes publication, verifies existing forecast hashes and explicitly deploys the new publication commit. GitHub scheduling is best effort; runs may be delayed or disabled after repository inactivity. Check the workflow summary and the forecast's recorded cutoff. No paid service or secret is needed for historical ingestion.
 
 ## Structure and contracts
 
-`pipeline/` owns ingestion, features, models, evaluation and publication. `web/` owns the static application. `site-data/` is the public artifact bundle. `schemas/` is generated from Pydantic; TypeScript types are generated from those schemas. Do not hand-edit generated schemas or types.
+`pipeline/` owns ingestion, features, models, evaluation and publication. `web/` owns the static application. `site-data/` is the public artifact bundle. Selected telemetry traces live outside `site.json`, one file per event under `site-data/telemetry/`, and the static build splits them into per-driver files that load on demand. `schemas/` is generated from Pydantic; TypeScript types are generated from those schemas. Do not hand-edit generated schemas or types.
 
 ```powershell
 uv run f1forecast schema

@@ -185,7 +185,28 @@ class DriverAnalysis(Contract):
     practice_pace_s: Finite | None
     long_run_pace_s: Finite | None
     stints: list[Stint]
-    telemetry: list[TelemetryPoint]
+
+
+class TelemetryTrace(Contract):
+    driver_id: Identifier
+    session_id: Identifier
+    points: list[TelemetryPoint] = Field(min_length=1)
+
+
+class EventTelemetry(Contract):
+    """Selected public traces, published beside site.json and loaded on demand."""
+
+    event_id: Identifier
+    traces: list[TelemetryTrace]
+
+    @model_validator(mode="after")
+    def one_trace_per_driver_from_this_event(self):
+        drivers = [trace.driver_id for trace in self.traces]
+        if len(drivers) != len(set(drivers)):
+            raise ValueError("each driver has at most one published trace")
+        if any(not trace.session_id.startswith(f"{self.event_id}-") for trace in self.traces):
+            raise ValueError("trace session belongs to another event")
+        return self
 
 
 class ActualResult(Contract):

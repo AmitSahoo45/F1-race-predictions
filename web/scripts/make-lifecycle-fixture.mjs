@@ -1,6 +1,6 @@
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 
 const source = fileURLToPath(new URL('../tests/fixtures/lifecycle-seed.json', import.meta.url));
 const output = fileURLToPath(new URL('../tests/.generated/lifecycle-site.json', import.meta.url));
@@ -10,14 +10,15 @@ const forecast = site.forecasts.find((item) => item.event_id === original?.id &&
 const analysis = site.analyses.find((item) => item.event_id === original?.id);
 if (!original || !forecast || !analysis) throw new Error('Demonstration seed event, qualifying forecast and analysis are required');
 site.demo_notice = 'SYNTHETIC TEST FIXTURE ONLY. These lifecycle examples are not real issued forecasts, historical backtests, or model evaluations.';
-for (const [index, driver] of analysis.drivers.slice(0, 2).entries()) {
-  driver.telemetry = Array.from({ length: 48 }, (_, point) => ({
+const traces = analysis.drivers.slice(0, 2).map((driver, index) => ({
+  driver_id: driver.driver_id,
+  points: Array.from({ length: 48 }, (_, point) => ({
     distance_m: point * 100,
     speed_kph: 170 + index * 7 + Math.round(48 * Math.sin(point / 7)),
     throttle_pct: Math.max(0, Math.min(100, Math.round(60 + 40 * Math.sin(point / 6)))),
     brake: point % 12 < 3,
-  }));
-}
+  })),
+}));
 
 for (const [slug, state, kind] of [
   ['test-awaiting', 'issued', 'issued'],
@@ -80,6 +81,10 @@ issuedForecast.coverage.summary = 'Synthetic lifecycle fixture; no forecast was 
 site.events.push(issued);
 site.forecasts.push(issuedForecast);
 
-await mkdir(dirname(output), { recursive: true });
+await mkdir(join(dirname(output), 'telemetry'), { recursive: true });
 await writeFile(output, JSON.stringify(site));
-console.log('Generated isolated lifecycle fixture at tests/.generated/lifecycle-site.json');
+for (const eventAnalysis of site.analyses) {
+  const telemetry = { event_id: eventAnalysis.event_id, traces: traces.map((trace) => ({ ...trace, session_id: `${eventAnalysis.event_id}-fp3` })) };
+  await writeFile(join(dirname(output), 'telemetry', `${eventAnalysis.event_id}.json`), JSON.stringify(telemetry));
+}
+console.log('Generated isolated lifecycle fixture and telemetry at tests/.generated/');

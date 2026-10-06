@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateEventScores, deriveForecastState, formatProbability, readComparison, writeComparison } from './forecast';
+import { calculateEventScores, deriveForecastState, formatFrequency, formatLapTime, formatProbability, readComparison, writeComparison } from './forecast';
 
 describe('forecast lifecycle', () => {
   const now = Date.parse('2026-09-26T10:00:00Z');
@@ -43,6 +43,24 @@ describe('public number formatting', () => {
     expect(formatProbability(0.004)).toBe('<1%');
     expect(formatProbability(0.996)).toBe('>99%');
     expect(formatProbability(0.246)).toBe('25%');
+  });
+
+  it('phrases probabilities as natural frequencies of simulated sessions', () => {
+    expect(formatFrequency(0.004, 'race')).toBe('fewer than 1 in 100 simulated races');
+    expect(formatFrequency(0.04, 'qualifying')).toBe('about 1 in 25 simulated qualifying sessions');
+    expect(formatFrequency(0.099, 'race')).toBe('about 1 in 10 simulated races');
+    expect(formatFrequency(0.246, 'race')).toBe('about 1 in 4 simulated races');
+    expect(formatFrequency(0.6, 'race')).toBe('about 6 in 10 simulated races');
+    expect(formatFrequency(0.94, 'race')).toBe('about 9 in 10 simulated races');
+    expect(formatFrequency(0.97, 'race')).toBe('more than 9 in 10 simulated races');
+    expect(formatFrequency(0.996, 'qualifying')).toBe('more than 99 in 100 simulated qualifying sessions');
+  });
+
+  it('formats lap times as minutes, seconds and milliseconds', () => {
+    expect(formatLapTime(92.3456)).toBe('1:32.346');
+    expect(formatLapTime(59.9996)).toBe('1:00.000');
+    expect(formatLapTime(65.04)).toBe('1:05.040');
+    expect(formatLapTime(54.321)).toBe('0:54.321');
   });
 });
 

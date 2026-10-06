@@ -1,0 +1,4 @@
+# Published forecasts, ledgers and approved releases are verified by SHA-256 of their exact
+# bytes. Keep Git from converting their line endings on any platform.
+site-data/** -text
+models/** -text

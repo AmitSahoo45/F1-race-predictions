@@ -16,10 +16,21 @@ from .features import build_feature_rows, completed_session_rows, missing_featur
 from .identity import canonical_team_id
 from .modeling import predict_scores, score_explanations
 from .probabilities import sample_orders
-from .publication import publish_forecast, publish_site, verify_archive
-from .registry import ModelRecord, ModelRegistry, select_model, verified_path
+from .publication import publish_forecast, publish_site, publish_telemetry, verify_archive
+from .registry import (
+    ModelRecord,
+    ModelRegistry,
+    covers_case,
+    fallback_model,
+    select_model,
+    verified_path,
+)
 
 RESULT_RETRY_WINDOW = timedelta(days=7)
+
+
+class UnvalidatedCase(ValueError):
+    """Optional inputs are missing in a pattern the release was not evaluated on."""
 
 
 def eligible_summary_versions(summaries: pd.DataFrame, cutoff: datetime) -> pd.DataFrame:
@@ -119,8 +130,8 @@ def validate_inputs(
     flags = missing_feature_groups(rows, target)
     if "missing-feature-schema" in flags:
         raise ValueError("required feature schema is incomplete")
-    if flags and sorted(flags) not in [sorted(p) for p in validated_patterns]:
-        raise ValueError("unvalidated missing-data case: " + ", ".join(flags))
+    if not covers_case(validated_patterns, flags):
+        raise UnvalidatedCase("unvalidated missing-data case: " + ", ".join(flags))
     return flags
 
 
@@ -133,6 +144,7 @@ def make_forecast(
     *,
     kind: str = "issued",
     now: datetime | None = None,
+    fallback_for: ModelRecord | None = None,
 ) -> Forecast:
     now = now or datetime.now(UTC)
     metadata = json.loads(
@@ -201,6 +213,16 @@ def make_forecast(
         s.id for s in event.sessions if s.end <= target.cutoff_at and s.id != target.session_id
     ]
     missing = sorted(set(eligible) - set(available))
+    summary = (
+        "Uses "
+        + (", ".join(s.rsplit("-", 1)[-1] for s in available) or "historical form")
+        + ("; coverage notes: " + ", ".join(flags) if flags else ".")
+    )
+    if fallback_for is not None:
+        summary += (
+            f". Baseline used: CatBoost release {fallback_for.version} has not been validated"
+            " for this missing-data case."
+        )
     return Forecast.model_validate(
         {
             "id": f"{event.id}-{target.target}-{kind}",
@@ -219,14 +241,38 @@ def make_forecast(
             "coverage": {
                 "available_sessions": available,
                 "missing_sessions": missing,
-                "summary": "Uses "
-                + (", ".join(s.rsplit("-", 1)[-1] for s in available) or "historical form")
-                + ("; coverage notes: " + ", ".join(flags) if flags else "."),
+                "summary": summary,
                 "flags": flags,
             },
             "drivers": predictions,
         }
     )
+
+
+def forecast_for_case(
+    event: Event,
+    target: TargetState,
+    rows: pd.DataFrame,
+    registry: ModelRegistry,
+    record: ModelRecord,
+    registry_root: Path,
+    *,
+    now: datetime,
+) -> Forecast:
+    """Issue the selected release, or its paired baseline for a case only that validated.
+
+    Only an unvalidated optional-data case falls back; missing required inputs and
+    integrity failures stay unavailable whichever model is selected.
+    """
+    try:
+        return make_forecast(event, target, rows, record, registry_root, now=now)
+    except UnvalidatedCase:
+        fallback = fallback_model(registry, record, now)
+        if fallback is None:
+            raise
+        return make_forecast(
+            event, target, rows, fallback, registry_root, now=now, fallback_for=record
+        )
 
 
 def run_tick(
@@ -308,8 +354,8 @@ def run_tick(
                 rows = build_feature_rows(summaries, target_rows(event, target.target))
                 # Re-read the real clock after network IO; slow fetches may miss the cutoff.
                 final_clock = now or datetime.now(UTC)
-                forecast = make_forecast(
-                    event, target, rows, record, registry_path.parent, now=final_clock
+                forecast = forecast_for_case(
+                    event, target, rows, registry, record, registry_path.parent, now=final_clock
                 )
                 publish_forecast(forecast, root / "forecasts", now=final_clock)
                 site.forecasts.append(forecast)
@@ -341,7 +387,8 @@ def run_tick(
                     )
                 from .analysis_export import export_analysis
 
-                analysis = export_analysis(event.id, archive_dir)
+                analysis, telemetry = export_analysis(event.id, archive_dir)
+                publish_telemetry(telemetry, root)
                 site.analyses = [a for a in site.analyses if a.event_id != event.id] + [analysis]
             except (
                 ValueError,

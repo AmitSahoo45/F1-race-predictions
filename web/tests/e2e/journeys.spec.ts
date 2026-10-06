@@ -66,6 +66,27 @@ test('real-data landing, calendar, weekend and method stay connected', async ({ 
   await audit(page);
 });
 
+test('landing follows the viewer clock through upcoming, ongoing and past weekends', async ({ page }) => {
+  const dated = site.events.filter((event) => event.sessions.length).map((event) => ({
+    event,
+    start: Math.min(...event.sessions.map((session) => Date.parse(session.start))),
+    end: Math.max(...event.sessions.map((session) => Date.parse(session.end))),
+  })).sort((a, b) => a.start - b.start);
+  const [previous, chosen] = dated.slice(-3, -1);
+  const latest = [...dated].sort((a, b) => b.end - a.end)[0];
+  for (const [clock, label, event] of [
+    [previous.end + 60_000, 'THE NEXT CHAPTER', chosen.event],
+    [chosen.start + 60 * 60_000, 'THIS WEEKEND', chosen.event],
+    [latest.end + 24 * 60 * 60_000, 'FROM THE ARCHIVE', latest.event],
+  ] as const) {
+    await page.clock.setFixedTime(new Date(clock));
+    await visit(page, '/');
+    const feature = page.locator('.event-feature');
+    await expect(feature.locator('.section-kicker')).toContainText(label);
+    await expect(feature.getByRole('heading', { name: event.name })).toBeVisible();
+  }
+});
+
 const examples = new Map<string, { event: SiteData['events'][number]; target: SiteData['events'][number]['targets'][number] }>();
 for (const event of site.events) for (const target of event.targets) {
   const key = `${target.state}-${target.target}-${site.forecasts.find((item) => item.id === target.forecast_id)?.kind ?? 'empty'}`;

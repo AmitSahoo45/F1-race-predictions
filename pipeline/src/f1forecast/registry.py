@@ -37,6 +37,11 @@ def validated_patterns(report: dict, kind: str) -> list[list[str]]:
     return sorted(patterns)
 
 
+def covers_case(patterns: list[list[str]], flags: list[str]) -> bool:
+    """Complete inputs need no case evidence; missing ones need their exact validated pattern."""
+    return not flags or sorted(flags) in [sorted(p) for p in patterns]
+
+
 class ModelRecord(Contract):
     version: Identifier
     target: Target
@@ -61,13 +66,41 @@ class ModelRegistry(Contract):
     models: list[ModelRecord]
 
 
-def select_model(registry: ModelRegistry, target: str, now: datetime) -> ModelRecord | None:
-    candidates = [
+def _eligible(registry: ModelRegistry, target: str, now: datetime) -> list[ModelRecord]:
+    return [
         m
         for m in registry.models
         if m.target == target and m.approved and m.training_cutoff < now and m.approved_at <= now
     ]
+
+
+def _latest(candidates: list[ModelRecord]) -> ModelRecord | None:
     return max(candidates, key=lambda m: (m.training_cutoff, m.approved_at)) if candidates else None
+
+
+def select_model(registry: ModelRegistry, target: str, now: datetime) -> ModelRecord | None:
+    return _latest(_eligible(registry, target, now))
+
+
+def fallback_model(
+    registry: ModelRegistry, record: ModelRecord, now: datetime
+) -> ModelRecord | None:
+    """The baseline evaluated alongside a learned release, for cases only it validated.
+
+    Sharing the release's evaluation report and history keeps the paired evidence and the
+    feature rows identical. A baseline release has no further fallback.
+    """
+    paired = (record.hashes.get(record.report_path), record.hashes.get(record.history_path))
+    if record.kind == "baseline" or None in paired:
+        return None
+    return _latest(
+        [
+            m
+            for m in _eligible(registry, record.target, now)
+            if m.kind == "baseline"
+            and (m.hashes.get(m.report_path), m.hashes.get(m.history_path)) == paired
+        ]
+    )
 
 
 def verified_path(root: Path, relative: str, hashes: dict[str, str]) -> Path:

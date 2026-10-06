@@ -6,8 +6,10 @@ import numpy as np
 import pandas as pd
 import pytest
 from f1forecast.analysis_export import export_analysis
+from f1forecast.contracts import EventTelemetry
 from f1forecast.ingestion import ingest_session
 from f1forecast.providers import RawSession
+from f1forecast.publication import publish_telemetry, verify_telemetry
 
 NOW = datetime(2026, 9, 26, 12, tzinfo=UTC)
 
@@ -78,7 +80,7 @@ def test_export_analysis_uses_real_archive_tables_and_retains_dsq(tmp_path):
     provider = Provider()
     for kind in ("FP1", "Q", "R"):
         ingest_session(2025, 1, kind, tmp_path, fastf1_provider=provider, retrieved_at=NOW)
-    analysis = export_analysis("2025-01", tmp_path)
+    analysis, telemetry = export_analysis("2025-01", tmp_path)
     assert analysis.kind == "observed"
     assert analysis.circuit_points == [(1.0, 3.0), (2.0, 4.0)]
     assert "FastF1 public" in analysis.source
@@ -88,7 +90,10 @@ def test_export_analysis_uses_real_archive_tables_and_retains_dsq(tmp_path):
     assert driver.long_run_pace_s == 92.0
     assert driver.stints[0].compound == "MEDIUM"
     assert driver.stints[0].laps == 3
-    assert [p.throttle_pct for p in driver.telemetry] == [50.0, 100.0]
+    assert "telemetry" not in driver.model_dump()
+    assert telemetry.event_id == "2025-01"
+    assert [(t.driver_id, t.session_id) for t in telemetry.traces] == [("nor", "2025-01-FP1")]
+    assert [p.throttle_pct for p in telemetry.traces[0].points] == [50.0, 100.0]
     assert {(a.target, a.position, a.status) for a in analysis.actuals} == {
         ("qualifying", 1, "Finished"),
         ("race", None, "Disqualified"),
@@ -112,7 +117,7 @@ def test_export_analysis_does_not_invent_stints_without_source_boundaries(tmp_pa
             return raw
 
     ingest_session(2025, 1, "FP1", tmp_path, fastf1_provider=Provider(), retrieved_at=NOW)
-    assert export_analysis("2025-01", tmp_path).drivers[0].stints == []
+    assert export_analysis("2025-01", tmp_path)[0].drivers[0].stints == []
 
 
 def test_export_analysis_keeps_separate_same_compound_source_stints(tmp_path):
@@ -123,7 +128,7 @@ def test_export_analysis_keeps_separate_same_compound_source_stints(tmp_path):
             return raw
 
     ingest_session(2025, 1, "FP1", tmp_path, fastf1_provider=Provider(), retrieved_at=NOW)
-    stints = export_analysis("2025-01", tmp_path).drivers[0].stints
+    stints = export_analysis("2025-01", tmp_path)[0].drivers[0].stints
     assert [(stint.laps, stint.pace_s) for stint in stints] == [(1, 91.0), (2, 92.5)]
 
 
@@ -136,7 +141,7 @@ def test_export_analysis_attributes_actual_bulk_and_classification_sources(tmp_p
             return raw
 
     ingest_session(2025, 1, "Q", tmp_path, fastf1_provider=Provider(), retrieved_at=NOW)
-    analysis = export_analysis("2025-01", tmp_path)
+    analysis, _ = export_analysis("2025-01", tmp_path)
     assert "TracingInsights/2025@abc123" in analysis.source
     assert "Jolpica official classification" in analysis.source
     assert "FastF1 public" not in analysis.source
@@ -150,7 +155,7 @@ def test_export_analysis_omits_partial_race_classification(tmp_path):
             return raw
 
     ingest_session(2025, 1, "R", tmp_path, fastf1_provider=Provider(), retrieved_at=NOW)
-    assert export_analysis("2025-01", tmp_path).actuals == []
+    assert export_analysis("2025-01", tmp_path)[0].actuals == []
 
 
 def test_export_analysis_filesystem_reader_uses_latest_complete_snapshot_without_catalog(
@@ -181,4 +186,54 @@ def test_export_analysis_filesystem_reader_uses_latest_complete_snapshot_without
     monkeypatch.setattr("f1forecast.archive._connect", forbid_catalog)
     observed = export_analysis("2025-01", tmp_path, use_catalog=False)
     assert observed == expected
-    assert latest.manifest["retrieved_at"] in observed.source
+    assert latest.manifest["retrieved_at"] in observed[0].source
+
+
+def _exported(archive):
+    class Provider:
+        def fetch_session(self, _year, _event, kind):
+            return source_session(kind)
+
+    ingest_session(2025, 1, "FP1", archive, fastf1_provider=Provider(), retrieved_at=NOW)
+    return export_analysis("2025-01", archive)
+
+
+def test_event_telemetry_rejects_duplicate_drivers_and_sessions_from_other_events():
+    point = {"distance_m": 0.0, "speed_kph": 200.0, "throttle_pct": 50.0, "brake": False}
+    trace = {"driver_id": "nor", "session_id": "2025-01-FP1", "points": [point]}
+    EventTelemetry.model_validate({"event_id": "2025-01", "traces": [trace]})
+    with pytest.raises(ValueError, match="one published trace"):
+        EventTelemetry.model_validate({"event_id": "2025-01", "traces": [trace, trace]})
+    with pytest.raises(ValueError, match="session"):
+        EventTelemetry.model_validate(
+            {"event_id": "2025-01", "traces": [{**trace, "session_id": "2025-02-FP1"}]}
+        )
+    with pytest.raises(ValueError):
+        EventTelemetry.model_validate({"event_id": "2025-01", "traces": [{**trace, "points": []}]})
+
+
+def test_telemetry_is_published_beside_the_site_as_compact_json(tmp_path):
+    _, telemetry = _exported(tmp_path / "archive")
+    site_dir = tmp_path / "site-data"
+    path = publish_telemetry(telemetry, site_dir)
+    assert path == site_dir / "telemetry" / "2025-01.json"
+    raw = path.read_bytes()
+    assert b"\n " not in raw
+    assert EventTelemetry.model_validate_json(raw) == telemetry
+    written = path.stat().st_mtime_ns
+    publish_telemetry(telemetry, site_dir)
+    assert path.stat().st_mtime_ns == written
+
+
+def test_telemetry_files_must_belong_to_published_analyses(tmp_path):
+    analysis, telemetry = _exported(tmp_path / "archive")
+    site_dir = tmp_path / "site-data"
+    path = publish_telemetry(telemetry, site_dir)
+    assert verify_telemetry([analysis], site_dir) == 1
+    with pytest.raises(ValueError, match="no published analysis"):
+        verify_telemetry([], site_dir)
+    with pytest.raises(ValueError, match="absent from the analysis"):
+        verify_telemetry([analysis.model_copy(update={"drivers": []})], site_dir)
+    path.rename(path.with_name("2025-02.json"))
+    with pytest.raises(ValueError, match="file name"):
+        verify_telemetry([analysis], site_dir)

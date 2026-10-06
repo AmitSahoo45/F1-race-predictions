@@ -923,8 +923,7 @@
               "laps": 4,
               "pace_s": 91.2
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-02",
@@ -941,8 +940,7 @@
               "laps": 4,
               "pace_s": 91.32000000000001
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-03",
@@ -959,8 +957,7 @@
               "laps": 4,
               "pace_s": 91.44
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-04",
@@ -977,8 +974,7 @@
               "laps": 4,
               "pace_s": 91.56
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-05",
@@ -995,8 +991,7 @@
               "laps": 4,
               "pace_s": 91.68
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-06",
@@ -1013,8 +1008,7 @@
               "laps": 4,
               "pace_s": 91.8
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-07",
@@ -1031,8 +1025,7 @@
               "laps": 4,
               "pace_s": 91.92
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-08",
@@ -1049,8 +1042,7 @@
               "laps": 4,
               "pace_s": 92.04
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-09",
@@ -1067,8 +1059,7 @@
               "laps": 4,
               "pace_s": 92.16
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-10",
@@ -1085,8 +1076,7 @@
               "laps": 4,
               "pace_s": 92.28
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-11",
@@ -1103,8 +1093,7 @@
               "laps": 4,
               "pace_s": 92.4
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-12",
@@ -1121,8 +1110,7 @@
               "laps": 4,
               "pace_s": 92.52
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-13",
@@ -1139,8 +1127,7 @@
               "laps": 4,
               "pace_s": 92.64
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-14",
@@ -1157,8 +1144,7 @@
               "laps": 4,
               "pace_s": 92.76
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-15",
@@ -1175,8 +1161,7 @@
               "laps": 4,
               "pace_s": 92.88000000000001
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-16",
@@ -1193,8 +1178,7 @@
               "laps": 4,
               "pace_s": 93
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-17",
@@ -1211,8 +1195,7 @@
               "laps": 4,
               "pace_s": 93.12
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-18",
@@ -1229,8 +1212,7 @@
               "laps": 4,
               "pace_s": 93.24000000000001
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-19",
@@ -1247,8 +1229,7 @@
               "laps": 4,
               "pace_s": 93.36
             }
-          ],
-          "telemetry": []
+          ]
         },
         {
           "driver_id": "driver-20",
@@ -1265,8 +1246,7 @@
               "laps": 4,
               "pace_s": 93.48
             }
-          ],
-          "telemetry": []
+          ]
         }
       ],
       "event_id": "demonstration",

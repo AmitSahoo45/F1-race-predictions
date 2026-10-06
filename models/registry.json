@@ -1,4 +1,253 @@
 {
-  "schema_version": "1.0",
-  "models": []
+  "models": [
+    {
+      "approved": true,
+      "approved_at": "2026-10-06T17:08:24.948510Z",
+      "baseline_name": "blended",
+      "evaluation": {
+        "podium_brier": 0.08758148457812501,
+        "position_mae": 3.373911875,
+        "probability_loss": 0.9047935598525778,
+        "top10_brier": 0.157192547109375,
+        "win_brier": 0.041080227
+      },
+      "hashes": {
+        "approved/race-5f4a3ada4c71-baseline/evaluation.json": "dcc03ae0bb38a045f08a289181af5ed3bbcf8f839eebbf7ce3a5040adc30c777",
+        "approved/race-5f4a3ada4c71-baseline/history.parquet": "08ad997ef05f6acee8d56c047942bc9d16b05e8481142f1678be4b1749f501a7",
+        "approved/race-5f4a3ada4c71-baseline/metadata.json": "afb48b4bb4bf078e4cafbd3f78ba70695bbd0ce8c820d75d5095b0b490dba57e",
+        "approved/race-5f4a3ada4c71-baseline/model.cbm": "5f4a3ada4c713a5633c7f1d99d7b62c8ee1d6f6e142608769b8bd6bf36de2515"
+      },
+      "history_path": "approved/race-5f4a3ada4c71-baseline/history.parquet",
+      "kind": "baseline",
+      "metadata_path": "approved/race-5f4a3ada4c71-baseline/metadata.json",
+      "model_path": "approved/race-5f4a3ada4c71-baseline/model.cbm",
+      "report_path": "approved/race-5f4a3ada4c71-baseline/evaluation.json",
+      "target": "race",
+      "temperature": 0.3722359572243705,
+      "training_cutoff": "2026-10-05T17:26:02.758933Z",
+      "validated_missing_patterns": [
+        [
+          "missing-circuit-history",
+          "no-circuit-history"
+        ],
+        [
+          "missing-long-run-pace",
+          "missing-practice-pace",
+          "missing-stint-consistency",
+          "missing-telemetry",
+          "missing-tyre-context",
+          "no-circuit-history"
+        ],
+        [
+          "missing-long-run-pace",
+          "missing-qualifying-gap",
+          "missing-stint-consistency",
+          "no-circuit-history"
+        ],
+        [
+          "missing-long-run-pace",
+          "missing-qualifying-gap",
+          "no-circuit-history"
+        ],
+        [
+          "missing-long-run-pace",
+          "missing-stint-consistency"
+        ],
+        [
+          "missing-long-run-pace",
+          "no-circuit-history"
+        ],
+        [
+          "missing-qualifying-gap"
+        ],
+        [
+          "missing-qualifying-gap",
+          "missing-team-form",
+          "new-driver",
+          "new-race-history",
+          "no-circuit-history"
+        ],
+        [
+          "missing-qualifying-gap",
+          "missing-tyre-context",
+          "no-circuit-history"
+        ],
+        [
+          "missing-qualifying-gap",
+          "new-driver",
+          "new-race-history",
+          "no-circuit-history"
+        ],
+        [
+          "missing-qualifying-gap",
+          "no-circuit-history"
+        ],
+        [
+          "missing-team-form"
+        ],
+        [
+          "missing-team-form",
+          "new-driver",
+          "new-race-history",
+          "no-circuit-history"
+        ],
+        [
+          "missing-tyre-context"
+        ],
+        [
+          "missing-tyre-context",
+          "new-driver",
+          "new-race-history",
+          "no-circuit-history"
+        ],
+        [
+          "missing-tyre-context",
+          "no-circuit-history"
+        ],
+        [
+          "new-driver",
+          "new-race-history",
+          "no-circuit-history"
+        ],
+        [
+          "no-circuit-history"
+        ]
+      ],
+      "validation_events": 16,
+      "version": "race-5f4a3ada4c71-baseline"
+    },
+    {
+      "approved": true,
+      "approved_at": "2026-10-06T17:08:38.668313Z",
+      "baseline_name": "blended",
+      "evaluation": {
+        "podium_brier": 0.10018059102272728,
+        "position_mae": 3.697392045454546,
+        "probability_loss": 0.912836161430026,
+        "top10_brier": 0.17354939819318183,
+        "win_brier": 0.04412293628409092
+      },
+      "hashes": {
+        "approved/qualifying-f72d54e183a6-baseline/evaluation.json": "e4d0f3e66341c68b132aa21ccd9f6b0dd06ccf50fb3640a1067d56cb28c40fc6",
+        "approved/qualifying-f72d54e183a6-baseline/history.parquet": "08ad997ef05f6acee8d56c047942bc9d16b05e8481142f1678be4b1749f501a7",
+        "approved/qualifying-f72d54e183a6-baseline/metadata.json": "3425b7a0126333cff641c5cab4058fc87c4129d1582490ec2ad0bb465a5cd73a",
+        "approved/qualifying-f72d54e183a6-baseline/model.cbm": "f72d54e183a6c2df1464139deea22141fa1ca538df251f6ae054c302d74a3fd3"
+      },
+      "history_path": "approved/qualifying-f72d54e183a6-baseline/history.parquet",
+      "kind": "baseline",
+      "metadata_path": "approved/qualifying-f72d54e183a6-baseline/metadata.json",
+      "model_path": "approved/qualifying-f72d54e183a6-baseline/model.cbm",
+      "report_path": "approved/qualifying-f72d54e183a6-baseline/evaluation.json",
+      "target": "qualifying",
+      "temperature": 0.28028913203695616,
+      "training_cutoff": "2026-10-05T17:26:43.041824Z",
+      "validated_missing_patterns": [
+        [
+          "missing-circuit-history",
+          "no-circuit-history"
+        ],
+        [
+          "missing-long-run-pace",
+          "missing-practice-pace",
+          "missing-stint-consistency",
+          "missing-telemetry",
+          "missing-tyre-context",
+          "no-circuit-history"
+        ],
+        [
+          "missing-long-run-pace",
+          "missing-stint-consistency"
+        ],
+        [
+          "missing-long-run-pace",
+          "missing-stint-consistency",
+          "no-circuit-history"
+        ],
+        [
+          "missing-long-run-pace",
+          "no-circuit-history"
+        ],
+        [
+          "missing-team-form"
+        ],
+        [
+          "missing-team-form",
+          "new-driver",
+          "new-race-history",
+          "no-circuit-history"
+        ],
+        [
+          "missing-tyre-context"
+        ],
+        [
+          "missing-tyre-context",
+          "new-driver",
+          "new-race-history",
+          "no-circuit-history"
+        ],
+        [
+          "missing-tyre-context",
+          "no-circuit-history"
+        ],
+        [
+          "new-driver",
+          "new-race-history",
+          "no-circuit-history"
+        ],
+        [
+          "no-circuit-history"
+        ]
+      ],
+      "validation_events": 22,
+      "version": "qualifying-f72d54e183a6-baseline"
+    },
+    {
+      "approved": true,
+      "approved_at": "2026-10-06T17:08:42.073014Z",
+      "baseline_name": "blended",
+      "evaluation": {
+        "podium_brier": 0.09036069363636362,
+        "position_mae": 3.463230681818182,
+        "probability_loss": 0.8850340691006238,
+        "top10_brier": 0.1585841266590909,
+        "win_brier": 0.04351861252272727
+      },
+      "hashes": {
+        "approved/qualifying-f72d54e183a6/evaluation.json": "e4d0f3e66341c68b132aa21ccd9f6b0dd06ccf50fb3640a1067d56cb28c40fc6",
+        "approved/qualifying-f72d54e183a6/history.parquet": "08ad997ef05f6acee8d56c047942bc9d16b05e8481142f1678be4b1749f501a7",
+        "approved/qualifying-f72d54e183a6/metadata.json": "3425b7a0126333cff641c5cab4058fc87c4129d1582490ec2ad0bb465a5cd73a",
+        "approved/qualifying-f72d54e183a6/model.cbm": "f72d54e183a6c2df1464139deea22141fa1ca538df251f6ae054c302d74a3fd3"
+      },
+      "history_path": "approved/qualifying-f72d54e183a6/history.parquet",
+      "kind": "catboost",
+      "metadata_path": "approved/qualifying-f72d54e183a6/metadata.json",
+      "model_path": "approved/qualifying-f72d54e183a6/model.cbm",
+      "report_path": "approved/qualifying-f72d54e183a6/evaluation.json",
+      "target": "qualifying",
+      "temperature": 1.9078095679425222,
+      "training_cutoff": "2026-10-05T17:26:43.041824Z",
+      "validated_missing_patterns": [
+        [
+          "missing-long-run-pace",
+          "no-circuit-history"
+        ],
+        [
+          "missing-team-form",
+          "new-driver",
+          "new-race-history",
+          "no-circuit-history"
+        ],
+        [
+          "missing-tyre-context",
+          "no-circuit-history"
+        ],
+        [
+          "no-circuit-history"
+        ]
+      ],
+      "validation_events": 22,
+      "version": "qualifying-f72d54e183a6"
+    }
+  ],
+  "schema_version": "1.0"
 }

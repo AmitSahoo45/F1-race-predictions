@@ -58,17 +58,28 @@ def sync_calendar(year: int, site_dir: str | Path, cache_dir: str | Path, *, ref
     for race in JolpicaProvider(cache_dir, cache_ttl_s=0 if refresh else 3600).fetch_races(year):
         event = event_from_race(race)
         existing = old.get(event.id)
-        if existing:
-            event.entrants = existing.entrants
-            for target in event.targets:
+        if existing and all(t.state != "scheduled" for t in existing.targets):
+            # Every target is decided: the weekend is history, observed times included.
+            event = existing
+        elif existing:
+            sessions, targets = list(event.sessions), list(event.targets)
+            for index, target in enumerate(targets):
                 old_target = next((t for t in existing.targets if t.target == target.target), None)
-                if old_target and old_target.cutoff_at == target.cutoff_at:
-                    event.targets = [old_target if t.target == target.target else t for t in event.targets]
-                if old_target and old_target.forecast_id:
-                    event.targets = [old_target if t.target == target.target else t for t in event.targets]
-                    # Preserve the schedule against which an immutable forecast was issued.
+                if old_target is None:
+                    continue
+                if old_target.state != "scheduled":
+                    # A decided target keeps the session it was issued, reconstructed or
+                    # declared unavailable against; only scheduled targets follow timetables.
+                    targets[index] = old_target
                     frozen = next(s for s in existing.sessions if s.id == old_target.session_id)
-                    event.sessions = [frozen if s.id == frozen.id else s for s in event.sessions]
+                    sessions = [frozen if s.id == frozen.id else s for s in sessions]
+                elif old_target.cutoff_at == target.cutoff_at:
+                    targets[index] = old_target
+            # Replace sessions and targets together; one at a time can transiently disagree.
+            event = Event.model_validate(
+                event.model_dump()
+                | {"entrants": existing.entrants, "sessions": sessions, "targets": targets}
+            )
         events.append(event)
     real_old = [e for e in previous.events if e.season != year and e.id.startswith(f"{e.season}-")]
     events.extend(real_old)

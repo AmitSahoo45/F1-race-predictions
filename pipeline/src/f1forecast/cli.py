@@ -134,7 +134,7 @@ def dispatch(args: argparse.Namespace) -> int:
         create_demo(args.output)
     elif command == "validate":
         from .contracts import SiteData
-        from .publication import verify_archive, verify_archive_history
+        from .publication import verify_archive, verify_archive_history, verify_telemetry
 
         root = Path(args.site_data)
         site = SiteData.model_validate_json((root / "site.json").read_text(encoding="utf-8"))
@@ -163,9 +163,10 @@ def dispatch(args: argparse.Namespace) -> int:
                 path.read_text(encoding="utf-8")
             ) != forecast.model_dump(mode="json"):
                 raise ValueError("bundled forecast differs from its immutable archived artifact")
+        traces = verify_telemetry(site.analyses, root)
         print(
-            f"Validated {len(site.events)} events, {len(site.forecasts)} bundled forecasts "
-            f"and {count} immutable archive entries."
+            f"Validated {len(site.events)} events, {len(site.forecasts)} bundled forecasts, "
+            f"{count} immutable archive entries and {traces} telemetry files."
         )
     elif command == "ingest":
         from .ingestion import ingest_session
@@ -314,11 +315,12 @@ def dispatch(args: argparse.Namespace) -> int:
     elif command == "export-analysis":
         from .analysis_export import export_analysis
         from .contracts import SiteData
-        from .publication import publish_site
+        from .publication import publish_site, publish_telemetry
 
         root = Path(args.site_data)
         site = SiteData.model_validate_json((root / "site.json").read_text(encoding="utf-8"))
-        analysis = export_analysis(args.event_id, args.archive)
+        analysis, telemetry = export_analysis(args.event_id, args.archive)
+        publish_telemetry(telemetry, root)
         site.analyses = [a for a in site.analyses if a.event_id != args.event_id] + [analysis]
         publish_site(site, root)
     elif command == "publish-evaluation":

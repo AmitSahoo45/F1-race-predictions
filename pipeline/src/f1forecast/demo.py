@@ -6,9 +6,9 @@ from pathlib import Path
 
 import numpy as np
 
-from .contracts import Event, Forecast, SiteData
+from .contracts import Event, EventTelemetry, Forecast, SiteData
 from .probabilities import sample_orders
-from .publication import publish_forecast, publish_site
+from .publication import publish_forecast, publish_site, publish_telemetry
 
 
 def create_demo(destination: str | Path) -> SiteData:
@@ -73,7 +73,7 @@ def create_demo(destination: str | Path) -> SiteData:
             "coverage": {"available_sessions": ["FP1", "FP2", "FP3"], "missing_sessions": [],
                 "summary": "Synthetic inputs illustrate the interface; these are not F1 predictions.",
                 "flags": ["synthetic", "not-validated"]}, "drivers": rows}))
-    driver_analysis = []
+    driver_analysis, traces = [], []
     for i, driver in enumerate(entrants):
         points = [{"distance_m": float(x), "speed_kph": float(195 + 105 * np.cos(x / 510 + i * .015)),
                    "throttle_pct": float(np.clip(55 + 45 * np.cos(x / 510 + i * .015), 0, 100)),
@@ -81,8 +81,10 @@ def create_demo(destination: str | Path) -> SiteData:
         driver_analysis.append({"driver_id": driver["id"], "practice_pace_s": 91.2 + .12 * i,
             "long_run_pace_s": 96.1 + .09 * i,
             "stints": [{"compound": "MEDIUM", "laps": 12, "pace_s": 96.1 + .09 * i},
-                       {"compound": "SOFT", "laps": 4, "pace_s": 91.2 + .12 * i}],
-            "telemetry": points})
+                       {"compound": "SOFT", "laps": 4, "pace_s": 91.2 + .12 * i}]})
+        traces.append({"driver_id": driver["id"], "session_id": f"{events[0].id}-fp3",
+                       "points": points})
+    telemetry = EventTelemetry.model_validate({"event_id": events[0].id, "traces": traces})
     site = SiteData.model_validate({"generated_at": created,
         "demo_notice": "Demonstration data: fictional drivers, synthetic forecasts and telemetry. No predictive accuracy has been established.",
         "events": events, "forecasts": forecasts,
@@ -99,5 +101,6 @@ def create_demo(destination: str | Path) -> SiteData:
     destination = Path(destination)
     for forecast in forecasts:
         publish_forecast(forecast, destination / "forecasts")
+    publish_telemetry(telemetry, destination)
     publish_site(site, destination)
     return site

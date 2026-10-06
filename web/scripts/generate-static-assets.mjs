@@ -1,6 +1,8 @@
 import { readFile, mkdir, unlink, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { join, resolve, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
+import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
 import sharp from 'sharp';
 
 if (process.env.APEX_SITE_DATA_PATH && process.env.APEX_ALLOW_TEST_FIXTURE !== '1') throw new Error('Test fixture override requires APEX_ALLOW_TEST_FIXTURE=1');
@@ -28,9 +30,22 @@ for (const event of site.events) {
   await writeFile(join(publicDir, 'og', `${event.season}-${event.id}.png`), await sharp(Buffer.from(svg)).png().toBuffer());
   generated.push(`og/${event.season}-${event.id}.png`);
 }
+// Traces live beside site.json, one validated file per event; split them per driver for on-demand loading.
+const ajv = new Ajv2020({ allErrors: true, strict: false });
+addFormats(ajv);
+const validateTelemetry = ajv.compile(JSON.parse(await readFile(fileURLToPath(new URL('../../schemas/telemetry.schema.json', import.meta.url)), 'utf8')));
 for (const analysis of site.analyses) {
+  let traces = new Map();
+  try {
+    const telemetry = JSON.parse(await readFile(join(dirname(source), 'telemetry', `${analysis.event_id}.json`), 'utf8'));
+    if (!validateTelemetry(telemetry)) throw new Error(`Invalid telemetry for ${analysis.event_id}: ${ajv.errorsText(validateTelemetry.errors)}`);
+    if (telemetry.event_id !== analysis.event_id) throw new Error(`Telemetry file names another event: ${analysis.event_id}`);
+    traces = new Map(telemetry.traces.map((trace) => [trace.driver_id, trace.points]));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   for (const driver of analysis.drivers) {
-    await writeFile(join(publicDir, 'telemetry', `${analysis.event_id}-${driver.driver_id}.json`), JSON.stringify(driver.telemetry));
+    await writeFile(join(publicDir, 'telemetry', `${analysis.event_id}-${driver.driver_id}.json`), JSON.stringify(traces.get(driver.driver_id) ?? []));
     generated.push(`telemetry/${analysis.event_id}-${driver.driver_id}.json`);
   }
 }

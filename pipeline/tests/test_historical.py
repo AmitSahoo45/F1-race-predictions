@@ -3,8 +3,10 @@
 import json
 from datetime import UTC, datetime
 
+import pandas as pd
 import pytest
-from f1forecast.historical import forecast_from_record, publish_history
+from f1forecast.contracts import Analysis, EventTelemetry
+from f1forecast.historical import forecast_from_record, historical_model_choice, publish_history
 from f1forecast.publication import verify_archive
 from test_operations import example_event
 
@@ -88,10 +90,7 @@ def test_historical_identity_changes_when_recipe_changes():
     assert first.id != second.id
 
 
-def test_history_publishes_saved_evidence_and_preserves_immutable_artifacts_on_repeat(
-    tmp_path, monkeypatch
-):
-    report, record = _report_and_record()
+def _publishable(report, record):
     report.update(
         events=[record],
         promotion_passed=False,
@@ -113,8 +112,10 @@ def test_history_publishes_saved_evidence_and_preserves_immutable_artifacts_on_r
             },
         },
     )
-    report_path = tmp_path / "report.json"
-    report_path.write_text(json.dumps(report), encoding="utf-8")
+    return report
+
+
+def _offline_calendar(monkeypatch):
     race = {
         "season": "2026",
         "round": "1",
@@ -127,6 +128,15 @@ def test_history_publishes_saved_evidence_and_preserves_immutable_artifacts_on_r
     monkeypatch.setattr("f1forecast.providers.JolpicaProvider.fetch_races", lambda *_: [race])
     monkeypatch.setattr("f1forecast.archive.load_event_snapshots", lambda *_a, **_k: [])
     monkeypatch.setattr("f1forecast.historical._drivers", lambda _: example_event().entrants)
+
+
+def test_history_publishes_saved_evidence_and_preserves_immutable_artifacts_on_repeat(
+    tmp_path, monkeypatch
+):
+    report = _publishable(*_report_and_record())
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    _offline_calendar(monkeypatch)
     now = datetime(2026, 11, 1, tzinfo=UTC)
     destination = tmp_path / "site-data"
     first = publish_history(
@@ -186,6 +196,7 @@ def test_history_publishes_saved_evidence_and_preserves_immutable_artifacts_on_r
             "required_inputs_available": False,
             "required_input_unavailability_reason": "required qualifying positions unavailable",
         },
+        {"missing_pattern": None},
     ],
 )
 def test_historical_forecast_rejects_incomplete_roster_or_missing_required_inputs(fields):
@@ -201,3 +212,124 @@ def test_historical_forecast_requires_explicit_current_availability_evidence():
     record["missing_pattern"] = ["missing-qualifying-result"]
     with pytest.raises(ValueError, match="unavailable"):
         forecast_from_record(example_event(), record, report, model_choice="baseline")
+
+
+def _case(pattern, *, learned_mae=0.9):
+    def summary(loss, mae):
+        return {
+            "probability_loss": loss,
+            "position_mae": mae,
+            "win_brier": 0.1,
+            "podium_brier": 0.1,
+            "top_ten_brier": 0.1,
+            "evaluated_events": 1,
+        }
+
+    learned, baseline = summary(0.2, learned_mae), summary(0.3, 1.0)
+    return {
+        "pattern": pattern,
+        "baseline": baseline,
+        "learned": learned,
+        "paired_locked_2025": {"baseline": baseline, "learned": learned},
+    }
+
+
+def test_historical_model_choice_applies_the_live_missing_case_rule():
+    report, record = _report_and_record()
+    record["learned_forecast"] = dict(record["baseline_forecast"])
+    report.update(
+        promotion_passed=True,
+        missing_case_evidence=[
+            _case(["missing-telemetry"]),
+            _case(["missing-tyre-context"], learned_mae=1.1),
+        ],
+    )
+    for pattern, expected in (
+        ([], "learned"),
+        (["missing-telemetry"], "learned"),
+        (["missing-tyre-context"], "baseline"),
+        (["missing-observed-conditions"], None),
+    ):
+        record["missing_pattern"] = pattern
+        assert historical_model_choice(record, report) == expected
+    report["promotion_passed"] = False
+    record["missing_pattern"] = ["missing-telemetry"]
+    assert historical_model_choice(record, report) == "baseline"
+
+
+def test_historical_reconstruction_rejects_a_case_its_model_did_not_validate():
+    report, record = _report_and_record()
+    record["learned_forecast"] = dict(record["baseline_forecast"])
+    report["missing_case_evidence"] = [_case(["missing-tyre-context"], learned_mae=1.1)]
+    record["missing_pattern"] = ["missing-tyre-context"]
+    with pytest.raises(ValueError, match="missing-data"):
+        forecast_from_record(example_event(), record, report, model_choice="learned")
+    result = forecast_from_record(example_event(), record, report, model_choice="baseline")
+    assert result.coverage.flags == ["retrospective-archive", "missing-tyre-context"]
+    record["missing_pattern"] = ["missing-observed-conditions"]
+    with pytest.raises(ValueError, match="missing-data"):
+        forecast_from_record(example_event(), record, report, model_choice="baseline")
+
+
+def test_history_applies_archived_times_that_move_a_session_past_its_calendar_slot(
+    tmp_path, monkeypatch
+):
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(_publishable(*_report_and_record())), encoding="utf-8")
+    _offline_calendar(monkeypatch)
+    moved = {
+        "session_id": "2026-01-Q",
+        "session_start": "2026-10-03T13:00:00+00:00",
+        "session_end": "2026-10-03T14:00:00+00:00",
+    }
+    monkeypatch.setattr(
+        "f1forecast.archive.load_event_snapshots", lambda *_a, **_k: [(moved, pd.DataFrame(), {})]
+    )
+    monkeypatch.setattr(
+        "f1forecast.analysis_export.export_analysis",
+        lambda event_id, *_a, **_k: (
+            Analysis(
+                event_id=event_id,
+                kind="observed",
+                source="Synthetic archive",
+                circuit_points=[],
+                drivers=[],
+                actuals=[],
+            ),
+            EventTelemetry(event_id=event_id, traces=[]),
+        ),
+    )
+    site = publish_history(
+        [str(report_path)],
+        tmp_path / "archive",
+        tmp_path / "site-data",
+        years=[2026],
+        now=datetime(2026, 11, 1, tzinfo=UTC),
+    )
+    qualifying = next(s for s in site.events[0].sessions if s.id == "2026-01-Q")
+    assert (qualifying.start, qualifying.end) == (
+        datetime(2026, 10, 3, 13, tzinfo=UTC),
+        datetime(2026, 10, 3, 14, tzinfo=UTC),
+    )
+    assert (tmp_path / "site-data" / "telemetry" / "2026-01.json").exists()
+
+
+def test_history_marks_an_unvalidated_case_unavailable_before_writing(tmp_path, monkeypatch):
+    report, record = _report_and_record()
+    record["missing_pattern"] = ["missing-observed-conditions"]
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(_publishable(report, record)), encoding="utf-8")
+    _offline_calendar(monkeypatch)
+    destination = tmp_path / "site-data"
+    site = publish_history(
+        [str(report_path)],
+        tmp_path / "archive",
+        destination,
+        years=[2026],
+        now=datetime(2026, 11, 1, tzinfo=UTC),
+    )
+    race = next(t for t in site.events[0].targets if t.target == "race")
+    assert race.state == "unavailable"
+    assert "missing-observed-conditions" in race.reason
+    assert site.forecasts == []
+    assert not list((destination / "forecasts").rglob("*.json"))

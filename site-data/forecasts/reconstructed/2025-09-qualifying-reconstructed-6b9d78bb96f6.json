@@ -1,0 +1,1107 @@
+{
+  "coverage": {
+    "available_sessions": [
+      "2025-09-FP1",
+      "2025-09-FP2",
+      "2025-09-FP3"
+    ],
+    "flags": [
+      "retrospective-archive",
+      "missing-tyre-context",
+      "no-circuit-history"
+    ],
+    "missing_sessions": [],
+    "summary": "Historical reconstruction from eligible earlier sessions. Source archives were retrieved after the event; this was not issued before the session."
+  },
+  "cutoff_at": "2025-05-31T13:30:00Z",
+  "drivers": [
+    {
+      "driver_id": "max_verstappen",
+      "expected_position": 5.42085,
+      "explanations": [
+        {
+          "contribution": 1.0106160032967455,
+          "group": "recent qualifying form"
+        },
+        {
+          "contribution": 0.5095012929760765,
+          "group": "team form"
+        },
+        {
+          "contribution": 0.4117097833090414,
+          "group": "recent race form"
+        }
+      ],
+      "p10": 1,
+      "p90": 11,
+      "podium_probability": 0.37805,
+      "position_probabilities": [
+        0.13445,
+        0.12425,
+        0.11935,
+        0.1045,
+        0.0931,
+        0.0824,
+        0.0759,
+        0.06365,
+        0.0504,
+        0.04455,
+        0.0339,
+        0.02605,
+        0.0179,
+        0.01335,
+        0.00795,
+        0.00475,
+        0.00215,
+        0.0012,
+        0.00015,
+        5e-05
+      ],
+      "rank": 1,
+      "top10_probability": 0.89255,
+      "win_probability": 0.13445
+    },
+    {
+      "driver_id": "piastri",
+      "expected_position": 5.6748,
+      "explanations": [
+        {
+          "contribution": 0.9462135721575374,
+          "group": "recent qualifying form"
+        },
+        {
+          "contribution": 0.5834473553578925,
+          "group": "team form"
+        },
+        {
+          "contribution": 0.4648938489069697,
+          "group": "recent race form"
+        }
+      ],
+      "p10": 1,
+      "p90": 11,
+      "podium_probability": 0.35450000000000004,
+      "position_probabilities": [
+        0.1244,
+        0.11995,
+        0.11015,
+        0.1023,
+        0.0967,
+        0.0776,
+        0.07365,
+        0.0675,
+        0.0559,
+        0.0457,
+        0.03855,
+        0.0298,
+        0.02285,
+        0.01545,
+        0.0087,
+        0.00555,
+        0.00315,
+        0.0017,
+        0.00035,
+        5e-05
+      ],
+      "rank": 2,
+      "top10_probability": 0.8738499999999999,
+      "win_probability": 0.1244
+    },
+    {
+      "driver_id": "norris",
+      "expected_position": 5.8134,
+      "explanations": [
+        {
+          "contribution": 0.745962238558666,
+          "group": "recent qualifying form"
+        },
+        {
+          "contribution": 0.6694046838975468,
+          "group": "team form"
+        },
+        {
+          "contribution": 0.36316132667554335,
+          "group": "recent race form"
+        }
+      ],
+      "p10": 1,
+      "p90": 11,
+      "podium_probability": 0.33365,
+      "position_probabilities": [
+        0.12,
+        0.11035,
+        0.1033,
+        0.10155,
+        0.09585,
+        0.08585,
+        0.0782,
+        0.0675,
+        0.0589,
+        0.0498,
+        0.0368,
+        0.0318,
+        0.02255,
+        0.01585,
+        0.00975,
+        0.00675,
+        0.0032,
+        0.0015,
+        0.00035,
+        0.00015
+      ],
+      "rank": 3,
+      "top10_probability": 0.8713,
+      "win_probability": 0.12
+    },
+    {
+      "driver_id": "leclerc",
+      "expected_position": 6.8689,
+      "explanations": [
+        {
+          "contribution": 0.5418748757299217,
+          "group": "team form"
+        },
+        {
+          "contribution": 0.5299303833063088,
+          "group": "recent qualifying form"
+        },
+        {
+          "contribution": 0.3737187135476781,
+          "group": "recent race form"
+        }
+      ],
+      "p10": 2,
+      "p90": 13,
+      "podium_probability": 0.26189999999999997,
+      "position_probabilities": [
+        0.086,
+        0.08805,
+        0.08785,
+        0.08655,
+        0.081,
+        0.08495,
+        0.0779,
+        0.0726,
+        0.06615,
+        0.05775,
+        0.053,
+        0.0433,
+        0.03585,
+        0.02665,
+        0.02215,
+        0.01465,
+        0.0085,
+        0.0049,
+        0.0017,
+        0.0005
+      ],
+      "rank": 4,
+      "top10_probability": 0.7888000000000001,
+      "win_probability": 0.086
+    },
+    {
+      "driver_id": "hamilton",
+      "expected_position": 7.48255,
+      "explanations": [
+        {
+          "contribution": 0.5356992454257673,
+          "group": "team form"
+        },
+        {
+          "contribution": 0.34096561071187076,
+          "group": "recent race form"
+        },
+        {
+          "contribution": 0.24945448487525004,
+          "group": "circuit history"
+        }
+      ],
+      "p10": 2,
+      "p90": 14,
+      "podium_probability": 0.2353,
+      "position_probabilities": [
+        0.0758,
+        0.08115,
+        0.07835,
+        0.0777,
+        0.07455,
+        0.07595,
+        0.0701,
+        0.0668,
+        0.0682,
+        0.06225,
+        0.05915,
+        0.05335,
+        0.04365,
+        0.0356,
+        0.03115,
+        0.02035,
+        0.0129,
+        0.00805,
+        0.004,
+        0.00095
+      ],
+      "rank": 5,
+      "top10_probability": 0.7308500000000001,
+      "win_probability": 0.0758
+    },
+    {
+      "driver_id": "sainz",
+      "expected_position": 8.39645,
+      "explanations": [
+        {
+          "contribution": 0.40120503656677947,
+          "group": "team form"
+        },
+        {
+          "contribution": 0.36914275446221523,
+          "group": "recent qualifying form"
+        },
+        {
+          "contribution": 0.2770795107868951,
+          "group": "circuit history"
+        }
+      ],
+      "p10": 2,
+      "p90": 15,
+      "podium_probability": 0.1903,
+      "position_probabilities": [
+        0.06235,
+        0.06215,
+        0.0658,
+        0.0652,
+        0.0684,
+        0.06575,
+        0.0678,
+        0.06665,
+        0.067,
+        0.0654,
+        0.0628,
+        0.05835,
+        0.0534,
+        0.0469,
+        0.0398,
+        0.0303,
+        0.0243,
+        0.01565,
+        0.0081,
+        0.0039
+      ],
+      "rank": 6,
+      "top10_probability": 0.6565,
+      "win_probability": 0.06235
+    },
+    {
+      "driver_id": "russell",
+      "expected_position": 8.736699999999999,
+      "explanations": [
+        {
+          "contribution": 0.5538503008036638,
+          "group": "recent qualifying form"
+        },
+        {
+          "contribution": 0.36999077874014685,
+          "group": "recent race form"
+        },
+        {
+          "contribution": -0.29176709890664354,
+          "group": "team form"
+        }
+      ],
+      "p10": 2,
+      "p90": 16,
+      "podium_probability": 0.17645,
+      "position_probabilities": [
+        0.05965,
+        0.0561,
+        0.0607,
+        0.06385,
+        0.0641,
+        0.0622,
+        0.06475,
+        0.06505,
+        0.0651,
+        0.06455,
+        0.06465,
+        0.0606,
+        0.0552,
+        0.0481,
+        0.0452,
+        0.03705,
+        0.0271,
+        0.0209,
+        0.01145,
+        0.0037
+      ],
+      "rank": 7,
+      "top10_probability": 0.62605,
+      "win_probability": 0.05965
+    },
+    {
+      "driver_id": "albon",
+      "expected_position": 9.75285,
+      "explanations": [
+        {
+          "contribution": 0.37867362626435896,
+          "group": "team form"
+        },
+        {
+          "contribution": 0.1940387090163787,
+          "group": "recent race form"
+        },
+        {
+          "contribution": -0.16244616541988754,
+          "group": "circuit history"
+        }
+      ],
+      "p10": 3,
+      "p90": 17,
+      "podium_probability": 0.14205,
+      "position_probabilities": [
+        0.0454,
+        0.0476,
+        0.04905,
+        0.05035,
+        0.0536,
+        0.05515,
+        0.05405,
+        0.0581,
+        0.0631,
+        0.06555,
+        0.06355,
+        0.0634,
+        0.0629,
+        0.06045,
+        0.0549,
+        0.0497,
+        0.04135,
+        0.03095,
+        0.02135,
+        0.0095
+      ],
+      "rank": 8,
+      "top10_probability": 0.5419499999999999,
+      "win_probability": 0.0454
+    },
+    {
+      "driver_id": "antonelli",
+      "expected_position": 10.81105,
+      "explanations": [
+        {
+          "contribution": 0.34271684852340245,
+          "group": "recent qualifying form"
+        },
+        {
+          "contribution": -0.3276113294440013,
+          "group": "team form"
+        },
+        {
+          "contribution": -0.18207014735823682,
+          "group": "recent race form"
+        }
+      ],
+      "p10": 3,
+      "p90": 18,
+      "podium_probability": 0.11130000000000001,
+      "position_probabilities": [
+        0.0357,
+        0.0378,
+        0.0378,
+        0.04185,
+        0.0434,
+        0.0471,
+        0.05005,
+        0.05265,
+        0.0561,
+        0.0566,
+        0.05825,
+        0.06095,
+        0.06465,
+        0.0669,
+        0.0643,
+        0.0624,
+        0.05775,
+        0.0469,
+        0.03815,
+        0.0207
+      ],
+      "rank": 9,
+      "top10_probability": 0.45904999999999996,
+      "win_probability": 0.0357
+    },
+    {
+      "driver_id": "tsunoda",
+      "expected_position": 10.9877,
+      "explanations": [
+        {
+          "contribution": 0.4314386362965775,
+          "group": "team form"
+        },
+        {
+          "contribution": -0.35084194534469987,
+          "group": "recent qualifying form"
+        },
+        {
+          "contribution": -0.26810985392912234,
+          "group": "recent race form"
+        }
+      ],
+      "p10": 3,
+      "p90": 18,
+      "podium_probability": 0.10685000000000001,
+      "position_probabilities": [
+        0.03425,
+        0.0347,
+        0.0379,
+        0.03865,
+        0.045,
+        0.04655,
+        0.04895,
+        0.0506,
+        0.0521,
+        0.05725,
+        0.0591,
+        0.0593,
+        0.0656,
+        0.06505,
+        0.06465,
+        0.06455,
+        0.06035,
+        0.04975,
+        0.0406,
+        0.0251
+      ],
+      "rank": 10,
+      "top10_probability": 0.44595,
+      "win_probability": 0.03425
+    },
+    {
+      "driver_id": "hadjar",
+      "expected_position": 11.08435,
+      "explanations": [
+        {
+          "contribution": -0.3331913586729637,
+          "group": "team form"
+        },
+        {
+          "contribution": -0.176916870488774,
+          "group": "practice pace"
+        },
+        {
+          "contribution": 0.14683074728967263,
+          "group": "public telemetry summary"
+        }
+      ],
+      "p10": 3,
+      "p90": 18,
+      "podium_probability": 0.10665,
+      "position_probabilities": [
+        0.03335,
+        0.0351,
+        0.0382,
+        0.0377,
+        0.04325,
+        0.0459,
+        0.04715,
+        0.0509,
+        0.05135,
+        0.0567,
+        0.05585,
+        0.06085,
+        0.06275,
+        0.0676,
+        0.06475,
+        0.06415,
+        0.06045,
+        0.05655,
+        0.04155,
+        0.0259
+      ],
+      "rank": 11,
+      "top10_probability": 0.4396,
+      "win_probability": 0.03335
+    },
+    {
+      "driver_id": "alonso",
+      "expected_position": 11.44825,
+      "explanations": [
+        {
+          "contribution": -0.4309081213545275,
+          "group": "team form"
+        },
+        {
+          "contribution": -0.31102508274175605,
+          "group": "recent race form"
+        },
+        {
+          "contribution": 0.151298076657985,
+          "group": "long-run pace"
+        }
+      ],
+      "p10": 4,
+      "p90": 18,
+      "podium_probability": 0.0984,
+      "position_probabilities": [
+        0.03225,
+        0.0334,
+        0.03275,
+        0.0368,
+        0.03635,
+        0.0426,
+        0.0452,
+        0.04555,
+        0.05095,
+        0.05385,
+        0.0564,
+        0.06145,
+        0.0657,
+        0.0658,
+        0.0655,
+        0.0686,
+        0.06325,
+        0.06135,
+        0.0492,
+        0.03305
+      ],
+      "rank": 12,
+      "top10_probability": 0.40969999999999995,
+      "win_probability": 0.03225
+    },
+    {
+      "driver_id": "gasly",
+      "expected_position": 12.16865,
+      "explanations": [
+        {
+          "contribution": -0.4961042354068255,
+          "group": "team form"
+        },
+        {
+          "contribution": 0.26449703561240273,
+          "group": "circuit history"
+        },
+        {
+          "contribution": -0.2526577077745558,
+          "group": "recent race form"
+        }
+      ],
+      "p10": 4,
+      "p90": 19,
+      "podium_probability": 0.08335000000000001,
+      "position_probabilities": [
+        0.02555,
+        0.02755,
+        0.03025,
+        0.0305,
+        0.03165,
+        0.0372,
+        0.0404,
+        0.042,
+        0.0461,
+        0.0506,
+        0.05405,
+        0.0544,
+        0.0598,
+        0.0643,
+        0.0709,
+        0.0751,
+        0.07325,
+        0.07105,
+        0.0671,
+        0.04825
+      ],
+      "rank": 13,
+      "top10_probability": 0.3618,
+      "win_probability": 0.02555
+    },
+    {
+      "driver_id": "lawson",
+      "expected_position": 12.4145,
+      "explanations": [
+        {
+          "contribution": -0.3865088583944024,
+          "group": "recent qualifying form"
+        },
+        {
+          "contribution": -0.26303496609088883,
+          "group": "recent race form"
+        },
+        {
+          "contribution": -0.23259246554389562,
+          "group": "team form"
+        }
+      ],
+      "p10": 4,
+      "p90": 19,
+      "podium_probability": 0.07905,
+      "position_probabilities": [
+        0.02515,
+        0.0264,
+        0.0275,
+        0.0287,
+        0.03315,
+        0.03525,
+        0.0368,
+        0.04085,
+        0.04575,
+        0.04555,
+        0.053,
+        0.0533,
+        0.0602,
+        0.0651,
+        0.06595,
+        0.07035,
+        0.0779,
+        0.07675,
+        0.0739,
+        0.05845
+      ],
+      "rank": 14,
+      "top10_probability": 0.34509999999999996,
+      "win_probability": 0.02515
+    },
+    {
+      "driver_id": "ocon",
+      "expected_position": 12.8888,
+      "explanations": [
+        {
+          "contribution": -0.32158879648079,
+          "group": "recent qualifying form"
+        },
+        {
+          "contribution": -0.3086749565644291,
+          "group": "team form"
+        },
+        {
+          "contribution": -0.1833640524863072,
+          "group": "long-run pace"
+        }
+      ],
+      "p10": 5,
+      "p90": 19,
+      "podium_probability": 0.07235,
+      "position_probabilities": [
+        0.02245,
+        0.02355,
+        0.02635,
+        0.026,
+        0.02715,
+        0.0321,
+        0.0337,
+        0.0365,
+        0.0411,
+        0.04495,
+        0.0472,
+        0.05585,
+        0.05465,
+        0.06275,
+        0.07155,
+        0.07225,
+        0.0767,
+        0.08605,
+        0.08285,
+        0.0763
+      ],
+      "rank": 15,
+      "top10_probability": 0.31385,
+      "win_probability": 0.02245
+    },
+    {
+      "driver_id": "stroll",
+      "expected_position": 12.990649999999999,
+      "explanations": [
+        {
+          "contribution": -0.7265951769672678,
+          "group": "recent qualifying form"
+        },
+        {
+          "contribution": -0.33533921984714266,
+          "group": "recent race form"
+        },
+        {
+          "contribution": -0.3324241208310783,
+          "group": "team form"
+        }
+      ],
+      "p10": 5,
+      "p90": 19,
+      "podium_probability": 0.06889999999999999,
+      "position_probabilities": [
+        0.0214,
+        0.023,
+        0.0245,
+        0.027,
+        0.0297,
+        0.03045,
+        0.0323,
+        0.03695,
+        0.0389,
+        0.0417,
+        0.0487,
+        0.0515,
+        0.05665,
+        0.06425,
+        0.0678,
+        0.07345,
+        0.08075,
+        0.08225,
+        0.08835,
+        0.0804
+      ],
+      "rank": 16,
+      "top10_probability": 0.3059,
+      "win_probability": 0.0214
+    },
+    {
+      "driver_id": "hulkenberg",
+      "expected_position": 13.44185,
+      "explanations": [
+        {
+          "contribution": -0.5144912743059644,
+          "group": "recent qualifying form"
+        },
+        {
+          "contribution": -0.4672141096817174,
+          "group": "team form"
+        },
+        {
+          "contribution": -0.25622128669529254,
+          "group": "recent race form"
+        }
+      ],
+      "p10": 5,
+      "p90": 20,
+      "podium_probability": 0.0623,
+      "position_probabilities": [
+        0.01895,
+        0.02055,
+        0.0228,
+        0.02435,
+        0.0255,
+        0.02695,
+        0.03085,
+        0.0337,
+        0.03545,
+        0.0385,
+        0.04455,
+        0.05115,
+        0.0558,
+        0.05995,
+        0.0671,
+        0.07325,
+        0.08015,
+        0.09215,
+        0.0971,
+        0.1012
+      ],
+      "rank": 17,
+      "top10_probability": 0.2776,
+      "win_probability": 0.01895
+    },
+    {
+      "driver_id": "bearman",
+      "expected_position": 14.37515,
+      "explanations": [
+        {
+          "contribution": -0.7616569954527264,
+          "group": "recent qualifying form"
+        },
+        {
+          "contribution": -0.4351739830911581,
+          "group": "team form"
+        },
+        {
+          "contribution": -0.24445470362941155,
+          "group": "recent race form"
+        }
+      ],
+      "p10": 6,
+      "p90": 20,
+      "podium_probability": 0.0484,
+      "position_probabilities": [
+        0.0153,
+        0.0161,
+        0.017,
+        0.01835,
+        0.01925,
+        0.02335,
+        0.02545,
+        0.0276,
+        0.0317,
+        0.03435,
+        0.03725,
+        0.04255,
+        0.0478,
+        0.05425,
+        0.0638,
+        0.06975,
+        0.0806,
+        0.0973,
+        0.1217,
+        0.15655
+      ],
+      "rank": 18,
+      "top10_probability": 0.22845,
+      "win_probability": 0.0153
+    },
+    {
+      "driver_id": "bortoleto",
+      "expected_position": 14.522049999999998,
+      "explanations": [
+        {
+          "contribution": -0.7144872892521645,
+          "group": "recent qualifying form"
+        },
+        {
+          "contribution": -0.47219775486072446,
+          "group": "team form"
+        },
+        {
+          "contribution": -0.369167933274853,
+          "group": "recent race form"
+        }
+      ],
+      "p10": 6,
+      "p90": 20,
+      "podium_probability": 0.04625,
+      "position_probabilities": [
+        0.01465,
+        0.016,
+        0.0156,
+        0.01975,
+        0.0185,
+        0.0214,
+        0.0237,
+        0.0276,
+        0.02855,
+        0.0346,
+        0.0377,
+        0.04265,
+        0.04975,
+        0.0504,
+        0.0563,
+        0.0674,
+        0.08435,
+        0.09555,
+        0.12755,
+        0.168
+      ],
+      "rank": 19,
+      "top10_probability": 0.22035,
+      "win_probability": 0.01465
+    },
+    {
+      "driver_id": "colapinto",
+      "expected_position": 14.720500000000001,
+      "explanations": [
+        {
+          "contribution": -0.9436718515513448,
+          "group": "recent qualifying form"
+        },
+        {
+          "contribution": -0.6671440639973578,
+          "group": "team form"
+        },
+        {
+          "contribution": -0.2947472873986381,
+          "group": "recent race form"
+        }
+      ],
+      "p10": 6,
+      "p90": 20,
+      "podium_probability": 0.044,
+      "position_probabilities": [
+        0.01295,
+        0.01625,
+        0.0148,
+        0.01835,
+        0.0198,
+        0.0213,
+        0.0231,
+        0.02725,
+        0.0272,
+        0.0298,
+        0.03555,
+        0.0394,
+        0.04235,
+        0.0513,
+        0.0578,
+        0.06965,
+        0.08185,
+        0.0995,
+        0.1245,
+        0.1873
+      ],
+      "rank": 20,
+      "top10_probability": 0.2108,
+      "win_probability": 0.01295
+    }
+  ],
+  "event_id": "2025-09",
+  "generated_at": "2026-10-06T18:53:25.929755Z",
+  "id": "2025-09-qualifying-reconstructed-6b9d78bb96f6",
+  "input_snapshot_ids": [
+    "2022-01-Q_40ba83ac6bfa146d",
+    "2022-01-R_a6bf1a846d46c827",
+    "2022-02-Q_fb43ad8a5d0ccbf4",
+    "2022-02-R_d68fb5c2f021ae29",
+    "2022-03-Q_eef6de7254ec841f",
+    "2022-03-R_75753ff801048ec0",
+    "2022-04-Q_ee9e4b29379a4125",
+    "2022-04-R_acc1db31b4c352e3",
+    "2022-05-Q_25f9e6a5febf0202",
+    "2022-05-R_72957ebd59de539f",
+    "2022-06-Q_ab309829d20111c7",
+    "2022-06-R_bb13832109399dfa",
+    "2022-07-Q_e44116f5565fb4be",
+    "2022-07-R_80e331d151984a7c",
+    "2022-08-Q_21ca6e555bfefe58",
+    "2022-08-R_1a3c6f4d3d983a94",
+    "2022-09-Q_120c2f931be529cb",
+    "2022-09-R_754c18bed38ca4c0",
+    "2022-10-Q_7985b9134be7821a",
+    "2022-10-R_68285c7ccf7c82d2",
+    "2022-11-Q_af793d8d29e3170a",
+    "2022-11-R_42e15911b760a2c8",
+    "2022-12-Q_c0c649c866511a01",
+    "2022-12-R_fe7cb2f278fe537b",
+    "2022-13-Q_e4718dae6f47ab06",
+    "2022-13-R_b9820437de289c28",
+    "2022-14-Q_4960d5776745409a",
+    "2022-14-R_51df3dad782217c3",
+    "2022-15-Q_6c8611c16f172cc3",
+    "2022-15-R_6d067a8c916ef5d1",
+    "2022-16-Q_084c2fd507de4e97",
+    "2022-16-R_3237e09a1a449179",
+    "2022-17-Q_d7da364eccc1d50a",
+    "2022-17-R_1a46ea728e80e6a4",
+    "2022-18-Q_04289245a05979b3",
+    "2022-18-R_21bd88efa395199b",
+    "2022-19-Q_da98fd97f32503cb",
+    "2022-19-R_35d0d09a88bb8565",
+    "2022-20-Q_f8f19465176ae716",
+    "2022-20-R_5b463eb63c69cbeb",
+    "2022-21-Q_4ca104acd537ee7f",
+    "2022-21-R_67285184e9d765b8",
+    "2022-22-Q_865d7d34a0715da2",
+    "2022-22-R_bc4bb4d6916c908a",
+    "2023-01-Q_25b1efeb59690916",
+    "2023-01-R_150cf0acebd4582d",
+    "2023-02-Q_6ac6953f04c9684c",
+    "2023-02-R_6bb5656c65feb755",
+    "2023-03-Q_334b1f6230746143",
+    "2023-03-R_e9d11b2f1f075e4e",
+    "2023-04-Q_1f03e2caa2940220",
+    "2023-04-R_1774874e22239405",
+    "2023-05-Q_d7b6de238ef5da86",
+    "2023-05-R_8ee6943e81db4fa9",
+    "2023-06-Q_571ad665d36e471c",
+    "2023-06-R_55adaa761bcea88e",
+    "2023-07-Q_9db0dac27c2ede87",
+    "2023-07-R_9ce10c7b2620aaeb",
+    "2023-08-Q_df479e9ac462be1e",
+    "2023-08-R_415f830ef108ca2e",
+    "2023-09-Q_0cb54ae78ca3e224",
+    "2023-09-R_de6f85704c8c5fe1",
+    "2023-10-Q_fed03fe9dca128c3",
+    "2023-10-R_929b061568059859",
+    "2023-11-Q_c3c5af07820bf62a",
+    "2023-11-R_9d0456c3dcaf1048",
+    "2023-12-Q_8e4690aa51d8f6b1",
+    "2023-12-R_5c33a128967f709a",
+    "2023-13-Q_8d0284ae8d8c12c4",
+    "2023-13-R_0a7410bc8a9c7627",
+    "2023-14-Q_eb103125e7827e72",
+    "2023-14-R_26fcb14371915470",
+    "2023-15-Q_978d361f7f457573",
+    "2023-15-R_c61c962d697f3453",
+    "2023-16-Q_f622f25ffc5695b6",
+    "2023-16-R_a077f92b2c7e9cd3",
+    "2023-17-Q_9234d622d8b22a46",
+    "2023-17-R_9f07269a5633a6ca",
+    "2023-18-Q_50cb2bb3021cc308",
+    "2023-18-R_579dd2c505b8e5ea",
+    "2023-19-Q_9f040a903b8a0374",
+    "2023-19-R_161834dfd23dbfd7",
+    "2023-20-Q_559747b6524ef326",
+    "2023-20-R_4b2d9a6c8a3b79e9",
+    "2023-21-Q_ab5f195c1679ad32",
+    "2023-21-R_0d269e2f969a5d25",
+    "2023-22-Q_b3f42f394b0a433e",
+    "2023-22-R_f07dbccafa7b26b1",
+    "2024-01-Q_94de2b5dfc50f650",
+    "2024-01-R_86afcd8272767915",
+    "2024-02-Q_5e36fb11e29a49ac",
+    "2024-02-R_5d4f69f689011a20",
+    "2024-03-Q_72634e5d59173137",
+    "2024-03-R_e158b45b9f1202e0",
+    "2024-04-Q_fd6b1de71681be77",
+    "2024-04-R_90864d87f248f48f",
+    "2024-05-Q_7d660dc50f5baf5c",
+    "2024-05-R_4f1d4fbeccb36d69",
+    "2024-06-Q_3038f3f8ce79be49",
+    "2024-06-R_ebffa7d109df2d11",
+    "2024-07-Q_bc7c48a22db81827",
+    "2024-07-R_36b339b82223e38c",
+    "2024-08-Q_9823b85c826becc5",
+    "2024-08-R_ecd8fe350f9c1efc",
+    "2024-09-Q_3d535b2c052a34d4",
+    "2024-09-R_cf4edc7971bbc559",
+    "2024-10-Q_3e002a6f3bb80d6f",
+    "2024-10-R_fcc303fb843754b4",
+    "2024-11-Q_44071e5e5c6f5530",
+    "2024-11-R_aefc07861c8f72cc",
+    "2024-12-Q_6321722a47439505",
+    "2024-12-R_29caa99cfac4b3a2",
+    "2024-13-Q_da825eb1c6a2bdba",
+    "2024-13-R_62aca721f634766b",
+    "2024-14-Q_d2d96fd435796a76",
+    "2024-14-R_25220ac0c257bbfa",
+    "2024-15-Q_0d69648109628503",
+    "2024-15-R_53d53214b5107bf6",
+    "2024-16-Q_ef5cf6eb982580fb",
+    "2024-16-R_3a44705d69d28959",
+    "2024-17-Q_950ba07f4dc1e889",
+    "2024-17-R_7dee2e957db3c514",
+    "2024-18-Q_db8d8a103b97ee08",
+    "2024-18-R_ef5f536572a3ae96",
+    "2024-19-Q_522dd8a03ba8a302",
+    "2024-19-R_e45acb8c70d91545",
+    "2024-20-Q_229bcfff100bb0a5",
+    "2024-20-R_3ac7fca59045f17d",
+    "2024-21-Q_ea60758e3cc4fd6e",
+    "2024-21-R_b905ad4cb59c1c0f",
+    "2024-22-Q_5637614e50eee021",
+    "2024-22-R_95f88c0282d2d0ca",
+    "2024-23-Q_312ebf63b91d9282",
+    "2024-23-R_c000dbd56626431f",
+    "2024-24-Q_1b6d9b6e192fab61",
+    "2024-24-R_af86437d0dac453b",
+    "2025-01-Q_640ad55ea2f3565f",
+    "2025-01-R_2994bcc21f6a6c17",
+    "2025-02-Q_354a80ce4e7c3a05",
+    "2025-02-R_2a339acd81739092",
+    "2025-03-Q_8007dbd041200246",
+    "2025-03-R_5a979baccdd73040",
+    "2025-04-Q_db3d58ed0e1fcbc8",
+    "2025-04-R_baa3e36b0271de2b",
+    "2025-05-Q_73784e86f7e29772",
+    "2025-05-R_134074ec8abb4ff1",
+    "2025-06-Q_7d99c0ff74e503a5",
+    "2025-06-R_f14f462cf63eed44",
+    "2025-07-Q_cd0a3a7d303a504e",
+    "2025-07-R_cf5aa59a4dd071ff",
+    "2025-08-Q_d01df35417ecfb1f",
+    "2025-08-R_56d37cd02fffe415",
+    "2025-09-FP1_4a576f01045cb1da",
+    "2025-09-FP2_a6ea070bed00bb4a",
+    "2025-09-FP3_4337cc69462ddc1a"
+  ],
+  "kind": "reconstructed",
+  "model_kind": "catboost",
+  "model_version": "qualifying-fold-212b7f7419ad",
+  "sample_count": 20000,
+  "schema_version": "1.0",
+  "seed": 42,
+  "target": "qualifying",
+  "training_cutoff": "2025-05-25T15:00:00Z"
+}

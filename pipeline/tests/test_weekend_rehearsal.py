@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 
+import pandas as pd
 import pytest
-from f1forecast.calendar import event_from_race, set_entrants
-from f1forecast.contracts import SiteData
+from f1forecast.calendar import event_from_race, set_entrants, sync_calendar
+from f1forecast.contracts import Event, EventTelemetry, SiteData
+from f1forecast.ingestion import ingest_session
 from f1forecast.operations import has_weekend_work, run_tick, target_rows
-from f1forecast.publication import publish_site
+from f1forecast.publication import publish_site, verify_telemetry
 from f1forecast.registry import approve_model, validated_patterns
+from test_analysis_export import source_session
 
 Q_START = datetime(2026, 10, 3, 12, tzinfo=UTC)
 R_START = datetime(2026, 10, 4, 12, tzinfo=UTC)
@@ -194,6 +198,104 @@ def test_race_roster_substitution_preserves_frozen_qualifying_roster_and_rows(tm
             target="qualifying",
             observed_at=Q_START - timedelta(hours=3),
         )
+
+
+def test_result_reconciliation_publishes_analysis_and_its_telemetry_beside_the_site(tmp_path):
+    site_dir, archive_dir = tmp_path / "site-data", tmp_path / "archive"
+    registry = tmp_path / "registry.json"
+    registry.write_text('{"schema_version":"1.0","models":[]}')
+    publish_site(_site(q_issued=True), site_dir)
+
+    class Provider:
+        def fetch_session(self, _year, _round, kind):
+            start = Q_START - timedelta(days=1) if kind == "FP1" else Q_START
+            return replace(
+                source_session(kind),
+                season=2026,
+                event_id="2026-01",
+                circuit_id="test_circuit",
+                session_start=pd.Timestamp(start),
+                session_end=pd.Timestamp(start + timedelta(hours=1)),
+            )
+
+    for kind in ("FP1", "Q"):
+        ingest_session(
+            2026, 1, kind, archive_dir, fastf1_provider=Provider(),
+            retrieved_at=Q_START + timedelta(hours=2),
+        )
+    report = run_tick(
+        site_dir, archive_dir, registry, now=Q_START + timedelta(hours=3), ingest=False
+    )
+    assert report["errors"] == []
+    site = SiteData.model_validate_json((site_dir / "site.json").read_text())
+    analysis = next(a for a in site.analyses if a.event_id == "2026-01")
+    assert {a.target for a in analysis.actuals} == {"qualifying"}
+    telemetry = EventTelemetry.model_validate_json(
+        (site_dir / "telemetry" / "2026-01.json").read_text()
+    )
+    assert [(t.driver_id, t.session_id) for t in telemetry.traces] == [("nor", "2026-01-FP1")]
+    assert verify_telemetry(site.analyses, site_dir) == 1
+
+
+def _calendar_race(round_number: int, q_start: datetime, r_start: datetime) -> dict:
+    def slot(start: datetime) -> dict:
+        return {"date": start.date().isoformat(), "time": start.strftime("%H:%M:%SZ")}
+
+    return {
+        "season": "2026",
+        "round": str(round_number),
+        "raceName": f"Synthetic Grand Prix {round_number}",
+        "Circuit": {"circuitId": "test_circuit", "Location": {"country": "Testland"}},
+        "FirstPractice": slot(q_start - timedelta(days=1)),
+        "Qualifying": slot(q_start),
+        **slot(r_start),
+    }
+
+
+def test_calendar_refresh_keeps_decided_targets_on_their_observed_sessions(tmp_path, monkeypatch):
+    site = _site(q_issued=True)
+    race = next(t for t in site.events[0].targets if t.target == "race")
+    race.state, race.reason = "unavailable", "required qualifying positions are unavailable"
+    upcoming = _event()
+    upcoming["id"], upcoming["round"] = "2026-02", 2
+    later = timedelta(days=14)
+    for session in upcoming["sessions"]:
+        session["id"] = session["id"].replace("2026-01", "2026-02")
+        session["start"], session["end"] = session["start"] + later, session["end"] + later
+    for target in upcoming["targets"]:
+        target["session_id"] = target["session_id"].replace("2026-01", "2026-02")
+        target["cutoff_at"] += later
+    site.events.append(Event.model_validate(upcoming))
+    site_dir = tmp_path / "site-data"
+    publish_site(site, site_dir)
+    # The provider calendar disagrees with the observed archive by an hour for round 1,
+    # and round 2's timetable genuinely moved.
+    monkeypatch.setattr(
+        "f1forecast.providers.JolpicaProvider.fetch_races",
+        lambda *_: [
+            _calendar_race(1, Q_START - timedelta(hours=1), R_START - timedelta(hours=1)),
+            _calendar_race(2, Q_START + later + timedelta(hours=2), R_START + later),
+        ],
+    )
+
+    refreshed = sync_calendar(2026, site_dir, tmp_path / "cache")
+    observed = next(e for e in refreshed.events if e.id == "2026-01")
+    qualifying = next(t for t in observed.targets if t.target == "qualifying")
+    race = next(t for t in observed.targets if t.target == "race")
+    assert (qualifying.state, qualifying.forecast_id) == ("issued", "2026-01-qualifying-issued")
+    assert qualifying.cutoff_at == Q_START - timedelta(minutes=30)
+    assert next(s for s in observed.sessions if s.id == "2026-01-Q").start == Q_START
+    assert (race.state, race.reason) == ("unavailable", "required qualifying positions are unavailable")
+    assert next(s for s in observed.sessions if s.id == "2026-01-R").start == R_START
+    # A fully decided weekend is history: practice keeps its observed time as well.
+    assert next(s for s in observed.sessions if s.id == "2026-01-FP1").start == (
+        Q_START - timedelta(days=1)
+    )
+    moved = next(e for e in refreshed.events if e.id == "2026-02")
+    moved_q = next(t for t in moved.targets if t.target == "qualifying")
+    assert moved_q.state == "scheduled"
+    assert moved_q.cutoff_at == Q_START + later + timedelta(hours=2, minutes=-30)
+    assert [f.id for f in refreshed.forecasts] == ["2026-01-qualifying-issued"]
 
 
 def test_out_of_weekend_schedule_has_no_work():

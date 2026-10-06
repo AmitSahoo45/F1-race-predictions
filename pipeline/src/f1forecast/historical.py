@@ -9,15 +9,24 @@ from pathlib import Path
 
 import numpy as np
 
-from .contracts import Event, Forecast, SiteData
-from .publication import canonical_json, publish_forecast, publish_site, verify_archive
+from .contracts import Event, Forecast, Session, SiteData
+from .publication import (
+    canonical_json,
+    publish_forecast,
+    publish_site,
+    publish_telemetry,
+    verify_archive,
+)
+from .registry import covers_case, validated_patterns
 from .rosters import drivers_from_snapshots as _drivers
 
 
 def reconstruction_unavailable_reason(record: dict) -> str | None:
     """Apply the live input/roster policy to historical publication as well."""
-    if not isinstance(record.get("required_inputs_available"), bool) or not isinstance(
-        record.get("unexpected_actual_entrants"), list
+    if (
+        not isinstance(record.get("required_inputs_available"), bool)
+        or not isinstance(record.get("unexpected_actual_entrants"), list)
+        or not isinstance(record.get("missing_pattern"), list)
     ):
         return "Forecast unavailable: regenerate legacy evidence with explicit input and roster diagnostics."
     if record.get("unexpected_actual_entrants"):
@@ -27,6 +36,20 @@ def reconstruction_unavailable_reason(record: dict) -> str | None:
             record.get("required_input_unavailability_reason") or "Required inputs are missing."
         )
         return f"Forecast unavailable: {detail}"
+    return None
+
+
+def historical_model_choice(record: dict, report: dict) -> str | None:
+    """Mirror live selection: the learned fold where its exact case passed, else the baseline."""
+    pattern = record.get("missing_pattern") or []
+    if (
+        report.get("promotion_passed")
+        and record.get("learned_forecast")
+        and covers_case(validated_patterns(report, "catboost"), pattern)
+    ):
+        return "learned"
+    if covers_case(validated_patterns(report, "baseline"), pattern):
+        return "baseline"
     return None
 
 
@@ -43,6 +66,12 @@ def forecast_from_record(
         raise ValueError("requested chronological fold is unavailable")
     if not set(block["driver_ids"]).issubset({d.id for d in event.entrants}):
         raise ValueError("fold driver identities are absent from the event roster")
+    pattern = record["missing_pattern"]
+    kind = "baseline" if model_choice == "baseline" else "catboost"
+    if not covers_case(validated_patterns(report, kind), pattern):
+        raise ValueError(
+            "Forecast unavailable: unvalidated missing-data case: " + ", ".join(pattern)
+        )
     target = next(t for t in event.targets if t.target == report["target"])
     cutoff = datetime.fromisoformat(record["cutoff"])
     if target.cutoff_at != cutoff:
@@ -138,7 +167,7 @@ def publish_history(
     )
     verify_archive(root / "forecasts")
     provider = JolpicaProvider(Path(archive_dir) / "jolpica-cache")
-    events, forecasts, analyses = [], [], []
+    events, forecasts, analyses, telemetry = [], [], [], []
     for year in sorted(set(years)):
         for race in provider.fetch_races(year):
             event = event_from_race(race)
@@ -148,17 +177,24 @@ def publish_history(
             observed_schedule = {m["session_id"]: m for m, _, _ in snapshots}
             # Observed history follows verified archive times, including overnight
             # events and postponed sessions. Future sessions retain the calendar.
-            for session in event.sessions:
+            # Replace start and end together: one at a time can transiently invert a
+            # session that moved by at least its own duration. Target cutoffs follow
+            # below; the whole event is validated once they agree.
+            for index, session in enumerate(event.sessions):
                 if manifest := observed_schedule.get(session.id):
-                    session.start = datetime.fromisoformat(manifest["session_start"])
-                    session.end = datetime.fromisoformat(manifest["session_end"])
+                    event.sessions[index] = Session.model_validate(
+                        session.model_dump()
+                        | {"start": manifest["session_start"], "end": manifest["session_end"]}
+                    )
             for target in event.targets:
                 session = next(s for s in event.sessions if s.id == target.session_id)
                 target.cutoff_at = session.start - timedelta(minutes=30)
             event.sessions.sort(key=lambda session: session.start)
             old = next((e for e in previous.events if e.id == event.id), None) if previous else None
             if snapshots:
-                analyses.append(export_analysis(event.id, archive_dir, use_catalog=use_catalog))
+                analysis, traces = export_analysis(event.id, archive_dir, use_catalog=use_catalog)
+                analyses.append(analysis)
+                telemetry.append(traces)
             for target in event.targets:
                 frozen = (
                     next(
@@ -197,11 +233,14 @@ def publish_history(
                     if reason := reconstruction_unavailable_reason(record):
                         target.state, target.reason = "unavailable", reason
                         continue
-                    choice = (
-                        "learned"
-                        if report.get("promotion_passed") and record.get("learned_forecast")
-                        else "baseline"
-                    )
+                    choice = historical_model_choice(record, report)
+                    if choice is None:
+                        target.state, target.reason = (
+                            "unavailable",
+                            "Forecast unavailable: unvalidated missing-data case: "
+                            + ", ".join(record["missing_pattern"]),
+                        )
+                        continue
                     historical_cutoff = datetime.fromisoformat(record["cutoff"])
                     changed_schedule = historical_cutoff != calendar_cutoffs[target.target]
                     if historical_cutoff != target.cutoff_at:
@@ -278,6 +317,8 @@ def publish_history(
             "evaluation": evaluation,
         }
     )
+    for traces in telemetry:
+        publish_telemetry(traces, root)
     publish_site(site, root)
     if reports:
         publish_evaluation(report_paths, root)

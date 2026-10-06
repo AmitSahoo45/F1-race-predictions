@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { TelemetryPoint } from '@/generated/site-data';
+import type { TelemetryPoint } from '@/generated/telemetry';
 
 export default function TelemetryCanvas({ eventId, a, b, aName, bName }: { eventId: string; a: string; b: string; aName: string; bName: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);

@@ -9,7 +9,15 @@ from typing import cast
 import pandas as pd
 
 from .archive import load_event_snapshots
-from .contracts import ActualResult, Analysis, DriverAnalysis, Stint, TelemetryPoint
+from .contracts import (
+    ActualResult,
+    Analysis,
+    DriverAnalysis,
+    EventTelemetry,
+    Stint,
+    TelemetryPoint,
+    TelemetryTrace,
+)
 
 PRACTICE = {"FP1", "FP2", "FP3"}
 
@@ -36,8 +44,8 @@ def _sample(frame: pd.DataFrame, limit: int) -> pd.DataFrame:
 
 def export_analysis(
     event_id: str, archive_dir: Path | str, *, use_catalog: bool = True
-) -> Analysis:
-    """Build observed analysis only from latest local source snapshots."""
+) -> tuple[Analysis, EventTelemetry]:
+    """Build observed analysis and its traces only from latest local source snapshots."""
     snapshots = load_event_snapshots(archive_dir, event_id, use_catalog=use_catalog)
     if not snapshots:
         raise ValueError(f"no archived sessions for {event_id}")
@@ -58,6 +66,7 @@ def export_analysis(
                 circuit_points.append((x, y))
     summary = pd.concat([rows for _, rows, _ in snapshots], ignore_index=True)
     drivers = []
+    traces = []
     for driver_id, history in summary.groupby("driver_id", sort=True):
         history = cast(pd.DataFrame, history)
         practice = history.loc[_column(history, "session_type").isin(tuple(PRACTICE))].sort_values(
@@ -68,6 +77,7 @@ def export_analysis(
         long_run = long_runs.iloc[-1] if not long_runs.empty else None
         stints: list[Stint] = []
         trace = pd.DataFrame()
+        trace_session = None
         for manifest, rows, tables in snapshots:
             if manifest["session_type"] not in PRACTICE:
                 continue
@@ -99,7 +109,7 @@ def export_analysis(
             if not candidate.empty and "driver_id" in candidate:
                 selected = candidate.loc[_column(candidate, "driver_id") == driver_id]
                 if not selected.empty:
-                    trace = selected
+                    trace, trace_session = selected, str(manifest["session_id"])
         points = []
         required = {"distance_m", "speed_kph", "throttle_fraction", "brake"}
         if required.issubset(trace.columns):
@@ -122,6 +132,10 @@ def export_analysis(
                             brake=bool(brake),
                         )
                     )
+        if points and trace_session is not None:
+            traces.append(
+                TelemetryTrace(driver_id=str(driver_id), session_id=trace_session, points=points)
+            )
         drivers.append(
             DriverAnalysis(
                 driver_id=str(driver_id),
@@ -130,7 +144,6 @@ def export_analysis(
                 if long_run is not None
                 else None,
                 stints=stints[:12],
-                telemetry=points,
             )
         )
     actuals = []
@@ -160,7 +173,7 @@ def export_analysis(
         for manifest, _, _ in snapshots
         if manifest.get("session_type") in {"Q", "R"}
     }))
-    return Analysis(
+    analysis = Analysis(
         event_id=event_id,
         kind="observed",
         source=(
@@ -172,3 +185,4 @@ def export_analysis(
         drivers=drivers,
         actuals=actuals,
     )
+    return analysis, EventTelemetry(event_id=event_id, traces=traces)

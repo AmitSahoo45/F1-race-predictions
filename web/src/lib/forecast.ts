@@ -29,6 +29,21 @@ export function formatProbability(probability: number): string {
   return `${Math.round(probability * 100)}%`;
 }
 
+export function formatFrequency(probability: number, target: 'qualifying' | 'race'): string {
+  const sessions = target === 'qualifying' ? 'simulated qualifying sessions' : 'simulated races';
+  if (probability < 0.01) return `fewer than 1 in 100 ${sessions}`;
+  if (probability < 0.3) return `about 1 in ${Math.round(1 / probability)} ${sessions}`;
+  if (probability < 0.95) return `about ${Math.round(probability * 10)} in 10 ${sessions}`;
+  if (probability <= 0.99) return `more than 9 in 10 ${sessions}`;
+  return `more than 99 in 100 ${sessions}`;
+}
+
+export function formatLapTime(seconds: number): string {
+  const milliseconds = Math.round(seconds * 1000);
+  const minutes = Math.floor(milliseconds / 60000);
+  return `${minutes}:${((milliseconds % 60000) / 1000).toFixed(3).padStart(6, '0')}`;
+}
+
 export function readComparison(query: string, entrants: string[]): [string, string] | null {
   const params = new URLSearchParams(query);
   const a = params.get('a');

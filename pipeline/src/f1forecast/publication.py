@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from .contracts import Forecast, SiteData
+from .contracts import Analysis, EventTelemetry, Forecast, SiteData
 
 
 def canonical_json(value: dict) -> bytes:
@@ -117,6 +117,40 @@ def publish_site(site: SiteData, directory: str | Path) -> None:
         }:
             return
     atomic_write(destination, canonical_json(payload))
+
+
+def publish_telemetry(telemetry: EventTelemetry, directory: str | Path) -> Path:
+    """Keep traces out of site.json; the static build splits them per driver."""
+    validated = EventTelemetry.model_validate(telemetry.model_dump())
+    destination = Path(directory) / "telemetry" / f"{validated.event_id}.json"
+    payload = (
+        json.dumps(
+            validated.model_dump(mode="json"),
+            separators=(",", ":"),
+            sort_keys=True,
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+    if not destination.exists() or destination.read_bytes() != payload:
+        atomic_write(destination, payload)
+    return destination
+
+
+def verify_telemetry(analyses: list[Analysis], directory: str | Path) -> int:
+    """Every trace file belongs to a published analysis and names only its drivers."""
+    drivers = {a.event_id: {d.driver_id for d in a.drivers} for a in analyses}
+    files = sorted((Path(directory) / "telemetry").glob("*.json"))
+    for path in files:
+        telemetry = EventTelemetry.model_validate_json(path.read_text(encoding="utf-8"))
+        if path.stem != telemetry.event_id:
+            raise ValueError(f"telemetry file name disagrees with its event: {path.name}")
+        if telemetry.event_id not in drivers:
+            raise ValueError(f"telemetry has no published analysis: {path.name}")
+        if unknown := {t.driver_id for t in telemetry.traces} - drivers[telemetry.event_id]:
+            raise ValueError(f"telemetry drivers absent from the analysis: {sorted(unknown)}")
+    return len(files)
 
 
 def verify_archive_history(directory: str | Path, *, repo_root: str | Path = ".") -> int:
