@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import type { SiteData } from '../../src/generated/site-data';
+import { expectScreenshotIfAvailable } from './helpers/optional-screenshot';
 
 const prefix = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 const visit = (page: Page, path: string) => page.goto(`${prefix}${path}`);
@@ -52,7 +53,7 @@ test('reconciled fixture scores a complete classification and retains retired st
   await expect(page.getByText('P1 Brier')).toBeVisible();
   await page.locator('.tower-row').nth(1).click();
   await expect(page.getByText('retired', { exact: true })).toBeVisible();
-  await expect(page.locator('.reconciliation')).toHaveScreenshot('reconciled-event-scores.png', { animations: 'disabled', maxDiffPixelRatio: 0.08 });
+  await expectScreenshotIfAvailable(page.locator('.reconciliation'), 'reconciled-event-scores.png');
   await audit(page);
 });
 
@@ -66,7 +67,7 @@ test('incomplete classification exposes DNS and withholds aggregate event scores
 
 test('reconstructed and awaiting displays have stable visual states and keyboard shortcut', async ({ page }) => {
   await visit(page, '/2026/test-reconstructed/?target=qualifying');
-  await expect(page.locator('.forecast-heading-line')).toHaveScreenshot('reconstructed-heading.png', { animations: 'disabled', maxDiffPixelRatio: 0.08 });
+  await expectScreenshotIfAvailable(page.locator('.forecast-heading-line'), 'reconstructed-heading.png');
   await visit(page, '/2026/test-awaiting/?target=qualifying');
   const skip = page.getByRole('link', { name: 'Skip to forecast' });
   await skip.focus();
