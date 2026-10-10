@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import type { SiteData } from '../../src/generated/site-data';
 
@@ -11,6 +11,35 @@ const prefix = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 const visit = (page: Page, path: string) => page.goto(`${prefix}${path}`);
 const audit = async (page: Page) => expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 const errors = new WeakMap<Page, string[]>();
+type Event = SiteData['events'][number];
+const eventOrder = (event: Event) => event.season * 100 + event.round;
+const observedOutlineEvents = site.events.filter((event) => site.analyses.some((analysis) =>
+  analysis.event_id === event.id && analysis.kind === 'observed' && analysis.circuit_points.length >= 3,
+)).sort((a, b) => eventOrder(b) - eventOrder(a));
+const outlineSource = (event: Event) => observedOutlineEvents.find((source) =>
+  source.circuit === event.circuit && eventOrder(source) <= eventOrder(event),
+);
+const expectOutline = async (artwork: Locator, event: Event) => {
+  const source = outlineSource(event);
+  expect(source, `${event.id} has an observed same-circuit outline source`).toBeDefined();
+  await expect(artwork).toBeVisible();
+  await expect(artwork).toHaveAttribute('data-circuit', event.circuit);
+  await expect(artwork).toHaveAttribute('data-source-event', source!.id);
+  const svg = artwork.getByRole('img');
+  await expect(svg).toBeVisible();
+  await expect(svg).toHaveAttribute('aria-label', new RegExp(`${event.circuit}.*${source!.season}`));
+  const path = artwork.locator('svg path.circuit-main');
+  await expect(path).toBeVisible();
+  await expect(path).toHaveAttribute('d', /^M.+ Z$/);
+  const geometry = await path.evaluate((element) => {
+    const outline = element as SVGPathElement;
+    const bounds = outline.getBBox();
+    return { width: bounds.width, height: bounds.height, length: outline.getTotalLength() };
+  });
+  expect(geometry.width).toBeGreaterThan(0);
+  expect(geometry.height).toBeGreaterThan(0);
+  expect(geometry.length).toBeGreaterThan(0);
+};
 
 test.beforeEach(({ page }) => {
   const messages: string[] = [];
@@ -84,6 +113,59 @@ test('landing follows the viewer clock through upcoming, ongoing and past weeken
     const feature = page.locator('.event-feature');
     await expect(feature.locator('.section-kicker')).toContainText(label);
     await expect(feature.getByRole('heading', { name: event.name })).toBeVisible();
+    await expectOutline(page.locator('.hero-art figure.circuit-art'), event);
+  }
+});
+
+for (const [viewportName, viewport] of [
+  ['desktop', { width: 1440, height: 900 }],
+  ['mobile', { width: 390, height: 844 }],
+] as const) {
+  test(`Singapore landing and weekend show the published outline source on ${viewportName}`, async ({ page }) => {
+    const event = site.events.find((item) => item.id === '2026-17')!;
+    const source = outlineSource(event)!;
+    const sourceLabel = `${source.season} ${source.id === event.id ? 'POSITION DATA' : 'REFERENCE OUTLINE'}`;
+    expect(event.circuit).toBe('marina_bay');
+    await page.setViewportSize(viewport);
+    await page.clock.setFixedTime(new Date(Math.min(...event.sessions.map((session) => Date.parse(session.start))) - 60_000));
+    await visit(page, '/');
+    await expect(page.locator('.event-feature .section-kicker')).toContainText('THE NEXT CHAPTER');
+    await expect(page.locator('.event-feature h2')).toHaveText(event.name);
+    await expectOutline(page.locator('.hero-art figure.circuit-art'), event);
+    await expect(page.locator('.hero-art figcaption')).toBeVisible();
+    await expect(page.locator('.hero-art figcaption')).toContainText(sourceLabel);
+    await expect(page.locator('.circuit-unavailable')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+    await page.screenshot({ path: `artifacts/singapore-landing-${viewportName}.png`, fullPage: true, animations: 'disabled' });
+
+    await page.getByRole('link', { name: 'Explore the weekend' }).click();
+    await expect(page).toHaveURL((url) => url.pathname.replace(/\/$/, '') === `${prefix}/${event.season}/${event.id}`);
+    await expect(page.locator('.weekend-hero h1')).toContainText(event.name);
+    const artwork = page.locator('.weekend-hero figure.circuit-art');
+    await expectOutline(artwork, event);
+    await expect(artwork.locator('figcaption')).toBeVisible();
+    await expect(artwork.locator('figcaption')).toContainText(sourceLabel);
+    await page.locator('.weekend-tabs').getByRole('button', { name: /Race/ }).click();
+    await expect(page).toHaveURL(/target=race/);
+    await expect(page.getByRole('heading', { name: 'Race forecast.' })).toBeVisible();
+    await expectOutline(artwork, event);
+    await expect(page.locator('.circuit-unavailable')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+    await page.screenshot({ path: `artifacts/singapore-weekend-${viewportName}.png`, fullPage: true, animations: 'disabled' });
+    await audit(page);
+  });
+}
+
+test('every published circuit renders a same-circuit outline on its latest weekend', async ({ page }) => {
+  test.setTimeout(90_000);
+  const latestByCircuit = new Map([...site.events].sort((a, b) => eventOrder(a) - eventOrder(b)).map((event) => [event.circuit, event]));
+  for (const [circuit, event] of latestByCircuit) {
+    await test.step(`${circuit}: ${event.id}`, async () => {
+      await visit(page, `/${event.season}/${event.id}/`);
+      await expect(page.locator('.weekend-hero h1')).toContainText(event.name);
+      await expectOutline(page.locator('.weekend-hero figure.circuit-art'), event);
+      await expect(page.locator('.circuit-unavailable')).toHaveCount(0);
+    });
   }
 });
 

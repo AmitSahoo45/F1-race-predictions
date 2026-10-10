@@ -43,10 +43,13 @@ def _sample(frame: pd.DataFrame, limit: int) -> pd.DataFrame:
 
 
 def export_analysis(
-    event_id: str, archive_dir: Path | str, *, use_catalog: bool = True
+    event_id: str, archive_dir: Path | str, *, use_catalog: bool = True,
+    completed_only: bool = False,
 ) -> tuple[Analysis, EventTelemetry]:
     """Build observed analysis and its traces only from latest local source snapshots."""
-    snapshots = load_event_snapshots(archive_dir, event_id, use_catalog=use_catalog)
+    snapshots = load_event_snapshots(
+        archive_dir, event_id, use_catalog=use_catalog, completed_only=completed_only
+    )
     if not snapshots:
         raise ValueError(f"no archived sessions for {event_id}")
     snapshots.sort(key=lambda item: item[0]["session_start"])

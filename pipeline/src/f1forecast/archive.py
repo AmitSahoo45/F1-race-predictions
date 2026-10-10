@@ -23,6 +23,17 @@ def _connect(archive_dir: Path | str) -> duckdb.DuckDBPyConnection:
     return connection
 
 
+def _read_snapshot(path: Path) -> tuple[dict, pd.DataFrame, dict[str, pd.DataFrame]]:
+    manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+    summary = pd.read_parquet(path / "summary.parquet")
+    tables = {
+        file.stem: pd.read_parquet(file)
+        for file in path.glob("*.parquet")
+        if file.stem != "summary"
+    }
+    return manifest, summary, tables
+
+
 def latest_snapshot(
     archive_dir: Path | str, session_id: str
 ) -> tuple[dict, pd.DataFrame, dict[str, pd.DataFrame]] | None:
@@ -34,17 +45,7 @@ def latest_snapshot(
             "SELECT relative_path FROM snapshots WHERE session_id = ? ORDER BY retrieved_at DESC LIMIT 1",
             [session_id],
         ).fetchone()
-    if row is None:
-        return None
-    path = root / row[0]
-    manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
-    summary = pd.read_parquet(path / "summary.parquet")
-    tables = {
-        file.stem: pd.read_parquet(file)
-        for file in path.glob("*.parquet")
-        if file.stem != "summary"
-    }
-    return manifest, summary, tables
+    return _read_snapshot(root / row[0]) if row is not None else None
 
 
 def index_published_snapshot(archive_dir: Path | str, snapshot_id: str) -> None:
@@ -149,9 +150,14 @@ def load_summaries(archive_dir: Path | str, *, use_catalog: bool = True) -> pd.D
 
 
 def load_event_snapshots(
-    archive_dir: Path | str, event_id: str, *, use_catalog: bool = True
+    archive_dir: Path | str, event_id: str, *, use_catalog: bool = True,
+    completed_only: bool = False,
 ) -> list[tuple[dict, pd.DataFrame, dict[str, pd.DataFrame]]]:
-    """Return latest immutable sessions; filesystem mode is safe during catalog writes."""
+    """Return latest snapshots, optionally selecting only finalized session versions.
+
+    Completion is filtered before selecting a version, so a later partial fetch
+    cannot hide finalized observations. Filesystem mode is safe during catalog writes.
+    """
     root = Path(archive_dir)
     if not use_catalog:
         latest: dict[str, tuple[pd.Timestamp, Path]] = {}
@@ -166,6 +172,8 @@ def load_event_snapshots(
                 or manifest.get("snapshot_id") != path.name
             ):
                 continue
+            if completed_only and manifest.get("coverage", {}).get("session_complete") is not True:
+                continue
             retrieved = pd.Timestamp(manifest["retrieved_at"])
             if not isinstance(retrieved, pd.Timestamp):
                 continue
@@ -173,19 +181,27 @@ def load_event_snapshots(
             if previous is None or (retrieved, path.name) > (previous[0], previous[1].name):
                 latest[session_id] = (retrieved, path)
         return [
-            (
-                json.loads((path / "manifest.json").read_text(encoding="utf-8")),
-                pd.read_parquet(path / "summary.parquet"),
-                {
-                    file.stem: pd.read_parquet(file)
-                    for file in path.glob("*.parquet")
-                    if file.stem != "summary"
-                },
-            )
+            _read_snapshot(path)
             for _, path in (latest[session_id] for session_id in sorted(latest))
         ]
     if not (root / "catalog.duckdb").exists():
         return []
+    if completed_only:
+        with _connect(root) as conn:
+            versions = conn.execute(
+                "SELECT session_id, relative_path, coverage_json FROM snapshots "
+                "WHERE session_id LIKE ? "
+                "ORDER BY session_id, retrieved_at DESC, snapshot_id DESC",
+                [f"{event_id}-%"],
+            ).fetchall()
+        finalized: dict[str, Path] = {}
+        for session_id, relative_path, coverage in versions:
+            if (
+                session_id not in finalized
+                and json.loads(coverage).get("session_complete") is True
+            ):
+                finalized[session_id] = root / relative_path
+        return [_read_snapshot(path) for path in finalized.values()]
     with _connect(root) as conn:
         rows = conn.execute(
             "SELECT DISTINCT session_id FROM snapshots WHERE session_id LIKE ? ORDER BY session_id",

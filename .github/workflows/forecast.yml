@@ -1,7 +1,8 @@
 name: Publish weekend forecasts
 on:
   schedule:
-    # Three attempts inside each 30-minute pre-cutoff window; off the top of the hour.
+    # Refresh completed sessions; three nominal attempts per forecast window.
+    # GitHub may delay scheduled runs, so monitor cutoff windows.
     - cron: "3,13,23,33,43,53 * * * *"
   workflow_dispatch:
 permissions:
@@ -34,7 +35,7 @@ jobs:
       - run: uv sync --locked --no-dev
       - name: Capture immutable baseline
         run: cp site-data/forecasts/hashes.json "$RUNNER_TEMP/forecast-hashes.json"
-      - name: Ingest eligible sessions and issue forecasts
+      - name: Refresh completed sessions and issue eligible forecasts
         run: uv run --no-dev f1forecast tick --refresh-calendar | tee "$RUNNER_TEMP/forecast-run.json"
       - run: uv run --no-dev f1forecast validate
       - name: Verify old hashes remain unchanged
@@ -46,7 +47,7 @@ jobs:
           baseline = json.loads((Path(os.environ['RUNNER_TEMP']) / 'forecast-hashes.json').read_text())
           verify_archive('site-data/forecasts', baseline)
           PY
-      - name: Record forecast artifacts
+      - name: Record observations and forecast artifacts
         id: publish
         run: |
           git add site-data
@@ -55,7 +56,7 @@ jobs:
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "Publish immutable weekend forecast artifacts"
+            git commit -m "Publish weekend observations and forecast artifacts"
             git push
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "published_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"

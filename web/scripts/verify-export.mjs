@@ -16,6 +16,10 @@ for (const event of site.events) {
   const path = join(out, String(event.season), event.id, 'index.html');
   const html = await readFile(path, 'utf8');
   assert(html.includes(event.name), `Missing event content in ${path}`);
+  const outline = JSON.parse(await readFile(join(out, 'circuits', event.id, 'outline.json'), 'utf8'));
+  if (process.env.APEX_ALLOW_TEST_FIXTURE !== '1') {
+    assert(outline?.circuit === event.circuit && /^M.+ Z$/.test(outline.path), `Missing or mismatched circuit outline for ${event.id}`);
+  }
   assert(html.includes(`${prefix}/_next/`), `Event assets lack basePath in ${path}`);
   assert(html.includes(`${prefix}/og/${event.season}-${event.id}.png`), `OG URL lacks basePath for ${event.id}`);
   await stat(join(out, 'og', `${event.season}-${event.id}.png`));

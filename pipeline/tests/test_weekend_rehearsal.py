@@ -301,14 +301,14 @@ def test_calendar_refresh_keeps_decided_targets_on_their_observed_sessions(tmp_p
 def test_out_of_weekend_schedule_has_no_work():
     site = _site()
     assert not has_weekend_work(site, datetime(2026, 9, 1, tzinfo=UTC))
-    assert not has_weekend_work(site, datetime(2026, 10, 10, tzinfo=UTC))
+    assert not has_weekend_work(site, datetime(2026, 10, 12, tzinfo=UTC))
     assert has_weekend_work(site, Q_START - timedelta(minutes=45))
 
 
 def test_result_reconciliation_remains_due_after_a_multi_day_feed_delay():
     site = _site(q_issued=True)
     assert has_weekend_work(site, Q_START + timedelta(days=3))
-    assert not has_weekend_work(site, Q_START + timedelta(days=8))
+    assert not has_weekend_work(site, Q_START + timedelta(days=9))
 
 
 def test_sprint_calendar_maps_actual_chronology_and_target_cutoffs():

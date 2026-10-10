@@ -48,7 +48,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
 .circuit-art svg { width: 100%; display: block; overflow: visible; }
 .circuit-shadow { stroke: rgb(var(--accent) / .075); }
 .circuit-main { stroke: rgb(var(--accent)); }
-.circuit-art figcaption { display: flex; justify-content: space-between; gap: 12px; font: .62rem var(--font-plex), monospace; color: rgb(var(--muted)); letter-spacing: .08em; margin-top: -20px; }
+.circuit-art figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; font: .62rem var(--font-plex), monospace; color: rgb(var(--muted)); letter-spacing: .08em; margin-top: -20px; }
 .circuit-art figcaption span { color: rgb(var(--accent)); }
 .circuit-unavailable { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; min-height: 360px; border: 1px dashed rgb(var(--line)); color: rgb(var(--muted)); }
 .circuit-unavailable p { color: rgb(var(--ink)); font-size: 1.2rem; margin: 8px 0; }

@@ -189,6 +189,83 @@ def test_export_analysis_filesystem_reader_uses_latest_complete_snapshot_without
     assert latest.manifest["retrieved_at"] in observed[0].source
 
 
+@pytest.mark.parametrize("use_catalog", [True, False])
+def test_completed_export_retains_latest_finalized_practice_before_new_partial(
+    tmp_path, use_catalog
+):
+    class Provider:
+        completed = True
+        extra_seconds = 0
+
+        def fetch_session(self, _year, _event, kind):
+            raw = source_session(kind)
+            raw.completed = self.completed
+            raw.laps["LapTime"] = [
+                np.timedelta64(90 + lap + self.extra_seconds, "s")
+                for lap in raw.laps["LapNumber"]
+            ]
+            return raw
+
+    provider = Provider()
+    ingest_session(2025, 1, "FP1", tmp_path, fastf1_provider=provider, retrieved_at=NOW)
+    provider.extra_seconds = 10
+    latest_finalized = ingest_session(
+        2025, 1, "FP1", tmp_path, fastf1_provider=provider,
+        retrieved_at=NOW + timedelta(hours=1), refresh=True,
+    )
+    provider.completed = False
+    provider.extra_seconds = 20
+    ingest_session(
+        2025, 1, "FP1", tmp_path, fastf1_provider=provider,
+        retrieved_at=NOW + timedelta(hours=2), refresh=True,
+    )
+
+    analysis, telemetry = export_analysis(
+        "2025-01", tmp_path, use_catalog=use_catalog, completed_only=True
+    )
+    assert analysis.drivers[0].practice_pace_s == 102.0
+    assert latest_finalized.manifest["retrieved_at"] in analysis.source
+    assert telemetry.traces[0].session_id == "2025-01-FP1"
+    # Existing callers still see the newest snapshot unless they request this gate.
+    latest, _ = export_analysis("2025-01", tmp_path, use_catalog=use_catalog)
+    assert latest.drivers[0].practice_pace_s == 112.0
+
+
+@pytest.mark.parametrize("use_catalog", [True, False])
+def test_completed_export_rejects_only_partial_sessions(tmp_path, use_catalog):
+    class Provider:
+        def fetch_session(self, _year, _event, kind):
+            raw = source_session(kind)
+            raw.completed = False
+            return raw
+
+    ingest_session(2025, 1, "FP1", tmp_path, fastf1_provider=Provider(), retrieved_at=NOW)
+    with pytest.raises(ValueError, match="no archived"):
+        export_analysis("2025-01", tmp_path, use_catalog=use_catalog, completed_only=True)
+
+
+@pytest.mark.parametrize("use_catalog", [True, False])
+def test_completed_export_keeps_finalized_practice_without_optional_telemetry(
+    tmp_path, use_catalog
+):
+    class Provider:
+        def fetch_session(self, _year, _event, kind):
+            raw = source_session(kind)
+            raw.telemetry = {}
+            return raw
+
+    snapshot = ingest_session(
+        2025, 1, "FP1", tmp_path, fastf1_provider=Provider(), retrieved_at=NOW
+    )
+    assert snapshot.manifest["coverage"]["session_complete"] is True
+    assert snapshot.manifest["coverage"]["complete"] is False
+    analysis, telemetry = export_analysis(
+        "2025-01", tmp_path, use_catalog=use_catalog, completed_only=True
+    )
+    assert analysis.drivers[0].practice_pace_s == 92.0
+    assert telemetry.traces == []
+
+
 def _exported(archive):
     class Provider:
         def fetch_session(self, _year, _event, kind):

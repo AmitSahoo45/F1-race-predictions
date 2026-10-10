@@ -7,12 +7,13 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { MotionConfig, motion } from 'motion/react';
 import type { ActualResult, Analysis, DriverAnalysis, DriverPrediction, Event, Forecast, TargetState } from '@/generated/site-data';
 import { CircuitArtwork } from './circuit-artwork';
+import type { CircuitOutline } from '@/lib/circuit-outline';
 import { GlossaryTerm } from './glossary-term';
 import { TimeLabel } from './time-label';
 import { calculateEventScores, deriveForecastState, formatFrequency, formatLapTime, formatProbability, readComparison, writeComparison } from '@/lib/forecast';
 
 const TelemetryCanvas = dynamic(() => import('./telemetry-canvas'), { ssr: false });
-type LeanAnalysis = Omit<Analysis, 'drivers'> & { drivers: Omit<DriverAnalysis, 'telemetry'>[] };
+type LeanAnalysis = Omit<Analysis, 'drivers' | 'circuit_points'> & { drivers: Omit<DriverAnalysis, 'telemetry'>[] };
 type Target = 'qualifying' | 'race';
 
 function PositionStrip({ probabilities, actual }: { probabilities: number[]; actual?: number | null }) {
@@ -95,7 +96,7 @@ function Comparison({ event, analysis, query, updateQuery }: { event: Event; ana
   </section>;
 }
 
-export function WeekendDashboard({ event, forecasts, analysis }: { event: Event; forecasts: Forecast[]; analysis?: LeanAnalysis }) {
+export function WeekendDashboard({ event, forecasts, analysis, outline }: { event: Event; forecasts: Forecast[]; analysis?: LeanAnalysis; outline?: CircuitOutline }) {
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
@@ -106,7 +107,7 @@ export function WeekendDashboard({ event, forecasts, analysis }: { event: Event;
   function updateQuery(next: string) { router.replace(`${pathname}?${next}`, { scroll: false }); }
   function selectTarget(next: Target) { const params = new URLSearchParams(query); params.set('target', next); updateQuery(params.toString()); }
   return <MotionConfig reducedMotion="user"><div className="frame weekend-page"><a className="skip-link" href="#forecast-heading">Skip to forecast</a><div className="weekend-top"><Link href={`/${event.season}/`} className="back-link">← {event.season} calendar</Link><span>ROUND {String(event.round).padStart(2, '0')} / {event.country.toUpperCase()}</span></div>
-    <div className="weekend-hero"><div><h1>{event.name}<span className="accent-dot">.</span></h1><p>{event.circuit} <span>/</span> {event.country}</p></div><CircuitArtwork analysis={analysis as Analysis | undefined} circuit={event.circuit} variant="detail" /></div>
+    <div className="weekend-hero"><div><h1>{event.name}<span className="accent-dot">.</span></h1><p>{event.circuit} <span>/</span> {event.country}</p></div><CircuitArtwork outline={outline} circuit={event.circuit} variant="detail" /></div>
     <nav className="weekend-tabs" aria-label="Forecast target"><button type="button" onClick={() => selectTarget('qualifying')} aria-current={active === 'qualifying' ? 'page' : undefined}>01 <strong>Qualifying</strong></button><button type="button" onClick={() => selectTarget('race')} aria-current={active === 'race' ? 'page' : undefined}>02 <strong>Race</strong></button></nav>
     {target && <ForecastPanel key={active} event={event} target={active} state={target} forecast={forecast} analysis={analysis} />}
     <div className="section-kicker session-kicker"><span>WEEKEND CHRONOLOGY</span><span>ALL TIMES IN YOUR TIME ZONE</span></div><ol className="session-list">{event.sessions.map((session, index) => <li key={session.id}><span>{String(index + 1).padStart(2, '0')}</span><strong>{session.kind}</strong><TimeLabel iso={session.start} trackZone={event.timezone} detail /></li>)}</ol>

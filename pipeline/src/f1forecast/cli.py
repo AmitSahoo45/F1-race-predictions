@@ -273,18 +273,6 @@ def dispatch(args: argparse.Namespace) -> int:
         from .calendar import sync_calendar
         from .contracts import SiteData
         from .operations import has_weekend_work, run_tick
-        from .registry import ModelRegistry
-
-        registry = ModelRegistry.model_validate_json(
-            Path(args.registry).read_text(encoding="utf-8")
-        )
-        if not any(m.approved for m in registry.models):
-            print(
-                json.dumps(
-                    {"status": "idle", "reason": "No approved model; no provider calls made."}
-                )
-            )
-            return 0
         site = SiteData.model_validate_json(
             (Path(args.site_data) / "site.json").read_text(encoding="utf-8")
         )
